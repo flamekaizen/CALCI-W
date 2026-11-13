@@ -3,8 +3,9 @@
  * Framework-free; used by the web UI, the desktop/mobile apps, the SDK and the API.
  */
 import type { MathNode } from 'mathjs';
-import { createMath, assertSafe, toNumber, parseWith, resetBudget, type CalciMath, type MathConfig, type AngleUnit } from './math.js';
+import { createMath, assertSafe, toNumber, parseWith, resetBudget, ChildScope, type CalciMath, type MathConfig, type AngleUnit } from './math.js';
 import { normalizeInput, extractBraces } from './normalize.js';
+import { setWorkBudget } from './compile.js';
 import { formatValue, exactForm, expressionTex, DEFAULT_FORMAT, type FormatOptions, type ExactForm } from './format.js';
 
 export interface CalculatorSettings extends FormatOptions, MathConfig {}
@@ -95,7 +96,32 @@ export function prepare(input: string): string {
     const { expr, restrictions } = extractBraces(s);
     s = restrictions.length ? `(${restrictions.map((r) => `(${r})`).join(' and ')}) ? (${expr}) : NaN` : expr;
   }
-  return s;
+  return verifyRewrite(s);
+}
+
+/**
+ * Verify mode (like the Casio ClassWiz): "2+2 = 4" or "sin(30)^2 + cos(30)^2 = 1"
+ * becomes an equality test. Assignments (a = 5, f(x) = …) are left alone.
+ */
+function verifyRewrite(s: string): string {
+  // segment start (after "(", "[" or ",") for every nesting level
+  const starts: number[] = [0];
+  const swaps: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(' || c === '[' || c === '{') starts.push(i + 1);
+    else if (c === ')' || c === ']' || c === '}') starts.pop();
+    else if (c === ',' || c === ';') starts[starts.length - 1] = i + 1;
+    else if (c === '=' && !'<>!='.includes(s[i - 1] ?? '') && s[i + 1] !== '=') {
+      const lhs = s.slice(starts[starts.length - 1] ?? 0, i).trim();
+      const assignable = /^[A-Za-z_]\w*(\s*\([^()]*\))?$/.test(lhs) || /^[A-Za-z_]\w*\s*\[.*\]$/.test(lhs);
+      if (lhs && !assignable) swaps.push(i);
+    }
+  }
+  if (!swaps.length) return s;
+  let out = s;
+  for (const i of swaps.reverse()) out = `${out.slice(0, i)}==${out.slice(i + 1)}`;
+  return out;
 }
 
 export class Calculator {
@@ -142,19 +168,54 @@ export class Calculator {
   }
 
   /** Evaluate and commit side effects (assignments, Ans). */
-  evaluate(input: string): EvalResult {
-    return this.run(input, true);
+  evaluate(input: string, extra?: Record<string, number>): EvalResult {
+    return this.run(input, true, extra);
   }
 
   /** Evaluate without side effects, for live previews. Returns null when not meaningful. */
-  preview(input: string): EvalResult | null {
+  preview(input: string, extra?: Record<string, number>): EvalResult | null {
     if (!input.trim()) return null;
     if (/\b(rand|randInt|random|randomInt|pickRandom)\b/.test(input)) return null;
-    const r = this.run(input, false);
+    const r = this.run(input, false, extra);
     return r.ok ? r : null;
   }
 
-  private run(input: string, commit: boolean): EvalResult {
+  /**
+   * Names in an expression that are neither defined variables, constants,
+   * functions nor units — candidates for "enter a value for x" prompts (Casio CALC).
+   */
+  unknownSymbols(input: string): string[] {
+    try {
+      const node = parseWith(this.math, prepare(input));
+      const out = new Set<string>();
+      const assigned = new Set<string>();
+      node.traverse((n: any) => {
+        if (n.type === 'FunctionAssignmentNode') n.params.forEach((p: string) => assigned.add(p));
+        if (n.type === 'AssignmentNode' && n.object?.name) assigned.add(n.object.name);
+      });
+      node.traverse((n: any, _p: string, parent: any) => {
+        if (n.type !== 'SymbolNode') return;
+        if (parent?.type === 'FunctionNode' && parent.fn === n) return;
+        const name: string = n.name;
+        if (assigned.has(name) || this.scope.has(name) || name in this.math) return;
+        if ((this.math as any).Unit?.isValuelessUnit?.(name)) return;
+        if (['integral', 'diff', 'sigma', 'product', 'limit', 'nsolve'].some((f) => node.toString().includes(`${f}(`))) {
+          // bound variables of calculus functions are not unknowns
+          let bound = false;
+          node.traverse((m: any) => {
+            if (m.type === 'FunctionNode' && ['integral', 'nInt', 'diff', 'sigma', 'product', 'limit', 'nsolve', 'summation'].includes(m.fn?.name) && m.args[1]?.name === name) bound = true;
+          });
+          if (bound) return;
+        }
+        out.add(name);
+      });
+      return [...out];
+    } catch {
+      return [];
+    }
+  }
+
+  private run(input: string, commit: boolean, extra?: Record<string, number>): EvalResult {
     const base: EvalResult = { ok: false, input, normalized: '', kind: 'empty', text: '', tex: '' };
     if (!input.trim()) return { ...base, ok: true };
     let normalized = '';
@@ -170,8 +231,19 @@ export class Calculator {
       } catch {
         inputTex = '';
       }
-      const scope = commit ? this.scope : new Map(this.scope);
-      let value = node.compile().evaluate(scope);
+      let scope: Map<string, unknown> = commit ? this.scope : new Map(this.scope);
+      if (extra && Object.keys(extra).length) {
+        const child = new ChildScope(scope);
+        for (const [k, v] of Object.entries(extra)) child.set(k, this.settings.bignumber ? this.math.bignumber(v) : v);
+        scope = child;
+      }
+      if (this.settings.safe) setWorkBudget(10_000_000);
+      let value: unknown;
+      try {
+        value = node.compile().evaluate(scope);
+      } finally {
+        setWorkBudget(Infinity);
+      }
       if (value && (value as any).isResultSet) {
         const entries = (value as any).entries as unknown[];
         value = entries[entries.length - 1];

@@ -14,6 +14,8 @@ export interface HistoryEntry {
   inputTex?: string;
   time: number;
   error?: boolean;
+  /** Textbook-editor LaTeX of the input, for re-editing. */
+  latex?: string;
 }
 
 export interface Slider {
@@ -84,6 +86,10 @@ export interface AppState {
   navCollapsed: boolean;
   calc: CalcPrefs;
   exactDefault: boolean;
+  /** Textbook (natural display) or linear one-line input. */
+  inputStyle: 'textbook' | 'linear';
+  /** Has the user seen the welcome tour. */
+  onboarded: boolean;
   haptics: boolean;
   history: HistoryEntry[];
   library: string;
@@ -227,6 +233,8 @@ export const useStore = create<AppState>()(
       navCollapsed: false,
       calc: { angle: 'deg', notation: 'auto', digits: 12, grouping: true, bignumber: false, precision: 64 },
       exactDefault: true,
+      inputStyle: 'textbook',
+      onboarded: false,
       haptics: true,
       history: [],
       library: DEFAULT_LIBRARY,
@@ -284,6 +292,8 @@ export const useStore = create<AppState>()(
         navCollapsed: s.navCollapsed,
         calc: s.calc,
         exactDefault: s.exactDefault,
+        inputStyle: s.inputStyle,
+        onboarded: s.onboarded,
         haptics: s.haptics,
         history: s.history,
         library: s.library,

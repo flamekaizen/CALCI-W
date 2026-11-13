@@ -15,7 +15,7 @@ export const openapi = {
   openapi: '3.1.0',
   info: {
     title: 'Calci API',
-    version: '1.0.0',
+    version: '1.1.0',
     description:
       'Free maths API: expression evaluation, symbolic derivatives, integrals, equation solving, statistics, probability, finance, unit conversion, programmer arithmetic and SVG graph rendering. Every endpoint accepts GET with query parameters or POST with a JSON body. CORS is open.',
     license: { name: 'MIT' },

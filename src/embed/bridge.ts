@@ -105,7 +105,7 @@ export function initEmbedBridge(): () => void {
   });
   const ro = new ResizeObserver(() => emitEmbed('resize', { height: document.documentElement.scrollHeight }));
   ro.observe(document.body);
-  emitEmbed('ready', { version: '1.0.0' });
+  emitEmbed('ready', { version: '1.1.0' });
   return () => {
     window.removeEventListener('message', onMessage);
     unsub();

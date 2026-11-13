@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { calculus, exactForm, numerics, expressionTex, createMath, prepare } from '../../core/index';
+import { antiderivative, factorPolynomial } from '../../core/cas';
 
 const texMath = createMath();
 import { useStore } from '../store';
@@ -7,7 +8,7 @@ import { Tabs, Tex, NumberInput, Segmented, fmt, copyText } from '../ui';
 import { Plot, type Series } from '../components/Plot';
 import '../../styles/modes/tools.css';
 
-type Tab = 'derivative' | 'integral' | 'limit' | 'taylor' | 'series';
+type Tab = 'derivative' | 'integral' | 'limit' | 'taylor' | 'series' | 'algebra';
 
 function numTex(v: number): string {
   if (!Number.isFinite(v)) return Number.isNaN(v) ? '\\text{undefined}' : v > 0 ? '\\infty' : '-\\infty';
@@ -57,6 +58,7 @@ export default function Calculus() {
           { id: 'limit', label: 'Limit' },
           { id: 'taylor', label: 'Taylor series' },
           { id: 'series', label: 'Sum & product' },
+          { id: 'algebra', label: 'Algebra (CAS)' },
         ]}
       />
       {compiled.f && tab === 'derivative' && <Derivative expr={expr} v={variable} f={compiled.f} />}
@@ -64,6 +66,7 @@ export default function Calculus() {
       {compiled.f && tab === 'limit' && <Limit expr={expr} v={variable} f={compiled.f} />}
       {compiled.f && tab === 'taylor' && <Taylor expr={expr} v={variable} f={compiled.f} />}
       {tab === 'series' && <SeriesTab />}
+      {tab === 'algebra' && <AlgebraTab expr={expr} v={variable} />}
     </div>
   );
 }
@@ -174,9 +177,24 @@ function Integral({ expr, v, f }: P) {
   const fa = Number.isFinite(a) ? a : -10;
   const fb = Number.isFinite(b) ? b : 10;
   const pad = Math.max(1, (fb - fa) * 0.25);
+  const anti = useMemo(() => {
+    try {
+      return antiderivative(expr, v);
+    } catch {
+      return null;
+    }
+  }, [expr, v]);
   return (
     <div className="grid-2" style={{ alignItems: 'start' }}>
       <section className="card card-pad stack">
+        <div className="result-box">
+          <div className="result-label">Indefinite integral (antiderivative)</div>
+          {anti ? (
+            <Tex tex={`\\int f(${v})\\,d${v} = ${anti.tex} + C`} display />
+          ) : (
+            <span className="small muted">No elementary antiderivative found by the rule-based solver — the definite integral below is still computed numerically.</span>
+          )}
+        </div>
         <div className="field-row">
           <div className="field">
             <label>Lower bound a</label>
@@ -412,4 +430,48 @@ function safeTex(expr: string): string {
   } catch {
     return '\\text{' + expr.replace(/[{}\\]/g, '') + '}';
   }
+}
+
+function AlgebraTab({ expr, v }: { expr: string; v: string }) {
+  const run = <T,>(f: () => T): T | null => {
+    try {
+      return f();
+    } catch {
+      return null;
+    }
+  };
+  const simp = useMemo(() => run(() => calculus.simplify(expr)), [expr]);
+  const exp = useMemo(() => run(() => calculus.expand(expr)), [expr]);
+  const fac = useMemo(() => run(() => factorPolynomial(expr, v)), [expr, v]);
+  const anti = useMemo(() => run(() => antiderivative(expr, v)), [expr, v]);
+  const der = useMemo(() => run(() => calculus.differentiate(expr, v, 1)), [expr, v]);
+  const rows: { label: string; tex: string | null; text?: string; note?: string }[] = [
+    { label: 'Input', tex: safeTex(expr) },
+    { label: 'Simplified', tex: simp?.tex ?? null, text: simp?.text },
+    { label: 'Expanded', tex: exp?.tex ?? null, text: exp?.text },
+    { label: 'Factored (over the rationals)', tex: fac?.tex ?? null, text: fac?.text, note: fac ? undefined : 'Only polynomials in one variable can be factored.' },
+    { label: `Derivative d/d${v}`, tex: der?.tex ?? null, text: der?.text },
+    { label: 'Antiderivative', tex: anti ? `${anti.tex} + C` : null, text: anti?.text, note: anti ? undefined : 'No elementary antiderivative found.' },
+  ];
+  return (
+    <section className="card card-pad stack" style={{ maxWidth: 820 }}>
+      <p className="small muted">Symbolic manipulation of f({v}) — like the CAS on advanced graphing calculators. Edit the function above.</p>
+      {rows.map((r) => (
+        <div className="result-box" key={r.label}>
+          <div className="row">
+            <span className="result-label" style={{ margin: 0 }}>
+              {r.label}
+            </span>
+            <div className="spacer" />
+            {r.text && (
+              <button className="btn btn-ghost btn-sm" onClick={() => copyText(r.text!)}>
+                Copy
+              </button>
+            )}
+          </div>
+          {r.tex ? <Tex tex={r.tex} display /> : <span className="small muted">{r.note ?? '—'}</span>}
+        </div>
+      ))}
+    </section>
+  );
 }

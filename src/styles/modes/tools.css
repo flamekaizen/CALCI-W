@@ -558,3 +558,15 @@
   border-color: var(--accent);
   box-shadow: var(--shadow);
 }
+
+.ratio-row .input {
+  width: 110px;
+  text-align: center;
+}
+.ratio-row > .input:nth-child(1)::after {
+  content: ':';
+}
+
+.vec-row .input {
+  text-align: center;
+}

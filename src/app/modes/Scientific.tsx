@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Copy, History, Trash2, X, Delete, ChevronLeft, ChevronRight, Search, Keyboard } from 'lucide-react';
+import { Copy, History, X, Delete, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
 import { getCalculator } from '../engine';
-import { useStore } from '../store';
-import { Tex, copyText, haptic, useMediaQuery, Segmented } from '../ui';
-import { FN_DOCS, CONSTANTS, signatureAt, sigParts } from '../fnDocs';
+import { useStore, type HistoryEntry } from '../store';
+import { Tex, copyText, haptic, useMediaQuery, NumberInput, toast } from '../ui';
+import { FN_DOCS, signatureAt } from '../fnDocs';
 import { emitEmbed } from '../../embed/bridge';
-import type { EvalResult } from '../../core/index';
+import { latexToExpr, alternativeForms, type EvalResult } from '../../core/index';
+import { MathInput, type MathInputHandle } from '../components/MathInput';
+import { SidePanel, SigHelp } from './ScientificPanel';
 import '../../styles/modes/scientific.css';
 
 type Action = 'eval' | 'clear' | 'back' | 'shift' | 'left' | 'right' | 'mplus' | 'mminus' | 'mr' | 'mc' | 'angle' | 'sd';
 interface Key {
   label: ReactNode;
+  /** Linear (one-line) text to insert */
   insert?: string;
+  /** Textbook LaTeX template to insert (#? = empty box, #@ = previous term) */
+  latex?: string;
   action?: Action;
   cls?: 'num' | 'fn' | 'op' | 'eq' | 'act' | 'mem';
   title?: string;
@@ -19,40 +24,55 @@ interface Key {
   wide?: boolean;
 }
 
-const k = (label: ReactNode, insert: string, cls: Key['cls'] = 'fn', title?: string, shift?: Key): Key => ({ label, insert, cls, title, shift });
+const k = (label: ReactNode, insert: string, latex: string, cls: Key['cls'] = 'fn', title?: string, shift?: Key): Key => ({ label, insert, latex, cls, title, shift });
 const sup = (base: string, s: string) => (
   <span>
     {base}
     <sup>{s}</sup>
   </span>
 );
+const FracIcon = ({ mixed = false }: { mixed?: boolean }) => (
+  <span className="key-frac" aria-hidden>
+    {mixed && <span className="key-frac-whole">▫</span>}
+    <span className="key-frac-stack">
+      <span>▫</span>
+      <span className="key-frac-bar" />
+      <span>▫</span>
+    </span>
+  </span>
+);
 
 const FN_KEYS: Key[] = [
-  { label: '2nd', action: 'shift', cls: 'act', title: 'Second function' },
+  { label: '2nd', action: 'shift', cls: 'act', title: 'Second function (yellow labels)' },
   { label: 'DEG', action: 'angle', cls: 'act', title: 'Cycle angle unit' },
-  k('sin', 'sin(', 'fn', 'Sine', k(sup('sin', '−1'), 'asin(', 'fn', 'Inverse sine')),
-  k('cos', 'cos(', 'fn', 'Cosine', k(sup('cos', '−1'), 'acos(', 'fn', 'Inverse cosine')),
-  k('tan', 'tan(', 'fn', 'Tangent', k(sup('tan', '−1'), 'atan(', 'fn', 'Inverse tangent')),
-  k(sup('x', '2'), '^2', 'fn', 'Square', k(sup('x', '3'), '^3', 'fn', 'Cube')),
-  k(sup('x', 'y'), '^', 'fn', 'Power', k(<span>ʸ√x</span>, 'root(', 'fn', 'n-th root: root(x, n)')),
-  k('√', '√(', 'fn', 'Square root', k('∛', 'cbrt(', 'fn', 'Cube root')),
-  k(sup('x', '−1'), '^(-1)', 'fn', 'Reciprocal', k('|x|', 'abs(', 'fn', 'Absolute value')),
-  k('ln', 'ln(', 'fn', 'Natural log', k(sup('e', 'x'), 'e^(', 'fn', 'Exponential')),
-  k('log', 'log(', 'fn', 'Log base 10 — log(x, b) for base b', k(sup('10', 'x'), '10^(', 'fn', 'Power of ten')),
-  k('π', 'π', 'fn', 'Pi', k('e', 'e', 'fn', "Euler's number")),
-  k('n!', '!', 'fn', 'Factorial', k('Γ', 'gamma(', 'fn', 'Gamma function')),
-  k('nCr', 'nCr(', 'fn', 'Combinations nCr(n, r)', k('nPr', 'nPr(', 'fn', 'Permutations nPr(n, r)')),
-  k('sinh', 'sinh(', 'fn', 'Hyperbolic sine', k(sup('sinh', '−1'), 'asinh(', 'fn')),
-  k('cosh', 'cosh(', 'fn', 'Hyperbolic cosine', k(sup('cosh', '−1'), 'acosh(', 'fn')),
-  k('tanh', 'tanh(', 'fn', 'Hyperbolic tangent', k(sup('tanh', '−1'), 'atanh(', 'fn')),
-  k('∫', 'integral(', 'fn', 'Integral: integral(f, x, a, b)', k('d/dx', 'diff(', 'fn', 'Derivative: diff(f, x, a)')),
-  k('Σ', 'sigma(', 'fn', 'Sum: sigma(f, n, a, b)', k('Π', 'product(', 'fn', 'Product: product(f, n, a, b)')),
-  k('mod', ' mod ', 'fn', 'Remainder', k('gcd', 'gcd(', 'fn', 'Greatest common divisor')),
-  k('%', '%', 'fn', 'Percent', k('lcm', 'lcm(', 'fn', 'Least common multiple')),
-  k('i', 'i', 'fn', 'Imaginary unit', k('∠', 'arg(', 'fn', 'Argument of complex number')),
-  k('Ran#', 'rand()', 'fn', 'Random number', k('RanInt', 'randInt(', 'fn', 'Random integer randInt(a, b)')),
-  k('x', 'x', 'fn', 'Variable x', k('y', 'y', 'fn', 'Variable y')),
-  k('=', ' = ', 'fn', 'Assign: a = 5 or f(x) = x^2', k(',', ', ', 'fn', 'Argument separator')),
+  k(<FracIcon />, '/', '\\frac{#@}{#?}', 'fn', 'Fraction — numerator over denominator', k(<FracIcon mixed />, ' ', '#?\\frac{#?}{#?}', 'fn', 'Mixed number')),
+  k('√', '√(', '\\sqrt{#?}', 'fn', 'Square root', k('∛', 'cbrt(', '\\sqrt[3]{#?}', 'fn', 'Cube root')),
+  k(sup('x', '▫'), '^', '^{#?}', 'fn', 'Power', k(<span>ⁿ√</span>, 'root(', '\\sqrt[#?]{#?}', 'fn', 'n-th root')),
+  k(sup('x', '2'), '^2', '^{2}', 'fn', 'Square', k(sup('x', '3'), '^3', '^{3}', 'fn', 'Cube')),
+  k(sup('x', '−1'), '^(-1)', '^{-1}', 'fn', 'Reciprocal', k('|x|', 'abs(', '\\left|#?\\right|', 'fn', 'Absolute value')),
+  k('log', 'log(', '\\log\\left(#?\\right)', 'fn', 'Log base 10', k(sup('10', '▫'), '10^(', '10^{#?}', 'fn', 'Power of ten')),
+  k(<span>log<sub>▫</sub></span>, 'log(', '\\log_{#?}\\left(#?\\right)', 'fn', 'Logarithm in any base', k('log₂', 'log2(', '\\log_{2}\\left(#?\\right)', 'fn', 'Log base 2')),
+  k('ln', 'ln(', '\\ln\\left(#?\\right)', 'fn', 'Natural log', k(sup('e', '▫'), 'e^(', 'e^{#?}', 'fn', 'Exponential')),
+  k('sin', 'sin(', '\\sin\\left(#?\\right)', 'fn', 'Sine', k(sup('sin', '−1'), 'asin(', '\\sin^{-1}\\left(#?\\right)', 'fn', 'Inverse sine')),
+  k('cos', 'cos(', '\\cos\\left(#?\\right)', 'fn', 'Cosine', k(sup('cos', '−1'), 'acos(', '\\cos^{-1}\\left(#?\\right)', 'fn', 'Inverse cosine')),
+  k('tan', 'tan(', '\\tan\\left(#?\\right)', 'fn', 'Tangent', k(sup('tan', '−1'), 'atan(', '\\tan^{-1}\\left(#?\\right)', 'fn', 'Inverse tangent')),
+  k('π', 'π', '\\pi', 'fn', 'Pi', k('e', 'e', 'e', 'fn', "Euler's number")),
+  k('n!', '!', '!', 'fn', 'Factorial', k('Γ', 'gamma(', '\\operatorname{gamma}\\left(#?\\right)', 'fn', 'Gamma function')),
+  k('sinh', 'sinh(', '\\sinh\\left(#?\\right)', 'fn', 'Hyperbolic sine', k(sup('sinh', '−1'), 'asinh(', '\\operatorname{asinh}\\left(#?\\right)', 'fn')),
+  k('cosh', 'cosh(', '\\cosh\\left(#?\\right)', 'fn', 'Hyperbolic cosine', k(sup('cosh', '−1'), 'acosh(', '\\operatorname{acosh}\\left(#?\\right)', 'fn')),
+  k('tanh', 'tanh(', '\\tanh\\left(#?\\right)', 'fn', 'Hyperbolic tangent', k(sup('tanh', '−1'), 'atanh(', '\\operatorname{atanh}\\left(#?\\right)', 'fn')),
+  k('nCr', 'nCr(', '\\binom{#?}{#?}', 'fn', 'Combinations', k('nPr', 'nPr(', '\\operatorname{nPr}\\left(#?,#?\\right)', 'fn', 'Permutations')),
+  k("°′″", '°', '^{\\circ}', 'fn', 'Degrees (e.g. sin 30°)', k('DMS', 'dms(', '\\operatorname{dms}\\left(#?,#?,#?\\right)', 'fn', 'Degrees, minutes, seconds → decimal')),
+  k('∫', 'integral(', '\\int_{#?}^{#?}#?\\,\\mathrm{d}x', 'fn', 'Definite integral', k('d/dx', 'diff(', '\\frac{\\mathrm{d}}{\\mathrm{d}x}\\left(#?\\right)\\Big|_{x=#?}', 'fn', 'Derivative at a point')),
+  k('Σ', 'sigma(', '\\sum_{n=#?}^{#?}\\left(#?\\right)', 'fn', 'Sum', k('Π', 'product(', '\\prod_{n=#?}^{#?}\\left(#?\\right)', 'fn', 'Product')),
+  k('lim', 'limit(', '\\lim_{x\\to#?}\\left(#?\\right)', 'fn', 'Limit', k('SOLVE', 'nsolve(', '\\operatorname{nsolve}\\left(#?,x,#?\\right)', 'fn', 'Solve for x near a guess')),
+  k('mod', ' mod ', '\\operatorname{mod}', 'fn', 'Remainder', k('gcd', 'gcd(', '\\gcd\\left(#?,#?\\right)', 'fn', 'Greatest common divisor')),
+  k('÷R', 'quorem(', '\\operatorname{quorem}\\left(#?,#?\\right)', 'fn', 'Division with remainder', k('lcm', 'lcm(', '\\operatorname{lcm}\\left(#?,#?\\right)', 'fn', 'Least common multiple')),
+  k('%', '%', '\\%', 'fn', 'Percent', k('Ran#', 'rand()', '\\operatorname{rand}\\left(\\right)', 'fn', 'Random number')),
+  k('i', 'i', 'i', 'fn', 'Imaginary unit', k('arg', 'arg(', '\\operatorname{arg}\\left(#?\\right)', 'fn', 'Argument (angle) of a complex number')),
+  k('Pol', 'Pol(', '\\operatorname{Pol}\\left(#?,#?\\right)', 'fn', 'Rectangular → polar: Pol(x, y)', k('Rec', 'Rec(', '\\operatorname{Rec}\\left(#?,#?\\right)', 'fn', 'Polar → rectangular: Rec(r, θ)')),
+  k('x', 'x', 'x', 'fn', 'Variable x', k('y', 'y', 'y', 'fn', 'Variable y')),
+  k('=', ' = ', '=', 'fn', 'Assign (a = 5), define f(x) = … or verify (2+2 = 4)', k(',', ', ', ',', 'fn', 'Argument separator')),
 ];
 
 const NUM_KEYS: Key[] = [
@@ -60,20 +80,29 @@ const NUM_KEYS: Key[] = [
   { label: 'MR', action: 'mr', cls: 'mem', title: 'Memory recall' },
   { label: 'M+', action: 'mplus', cls: 'mem', title: 'Add answer to memory' },
   { label: 'M−', action: 'mminus', cls: 'mem', title: 'Subtract answer from memory' },
-  k('(', '(', 'act'),
-  k(')', ')', 'act'),
+  k('(', '(', '(', 'act'),
+  k(')', ')', ')', 'act'),
   { label: <Delete size={20} />, action: 'back', cls: 'act', title: 'Delete (Backspace)' },
   { label: 'AC', action: 'clear', cls: 'act', title: 'All clear (Esc)' },
-  k('7', '7', 'num'), k('8', '8', 'num'), k('9', '9', 'num'), k('÷', '÷', 'op', 'Divide'),
-  k('4', '4', 'num'), k('5', '5', 'num'), k('6', '6', 'num'), k('×', '×', 'op', 'Multiply'),
-  k('1', '1', 'num'), k('2', '2', 'num'), k('3', '3', 'num'), k('−', '−', 'op', 'Subtract'),
-  k('0', '0', 'num'), k('.', '.', 'num'), k('×10ˣ', '×10^', 'num', 'Times ten to the power'), k('+', '+', 'op', 'Add'),
-  k('Ans', 'ans', 'act', 'Previous answer'),
+  k('7', '7', '7', 'num'), k('8', '8', '8', 'num'), k('9', '9', '9', 'num'), k('÷', '÷', '\\div', 'op', 'Divide'),
+  k('4', '4', '4', 'num'), k('5', '5', '5', 'num'), k('6', '6', '6', 'num'), k('×', '×', '\\times', 'op', 'Multiply'),
+  k('1', '1', '1', 'num'), k('2', '2', '2', 'num'), k('3', '3', '3', 'num'), k('−', '−', '-', 'op', 'Subtract'),
+  k('0', '0', '0', 'num'), k('.', '.', '.', 'num'), k('×10ˣ', '×10^', '\\times10^{#?}', 'num', 'Times ten to the power'), k('+', '+', '+', 'op', 'Add'),
+  k('Ans', 'ans', '\\operatorname{ans}', 'act', 'Previous answer'),
   { label: 'S⇔D', action: 'sd', cls: 'act', title: 'Toggle exact / decimal' },
   { label: '=', action: 'eval', cls: 'eq', title: 'Evaluate (Enter)', wide: true },
 ];
 
 const OPERATOR_START = /^[+×÷*/^!%−]$|^×10\^$|^\^/;
+
+function convertLatex(latex: string): { expr: string; error: string | null } {
+  if (!latex.trim()) return { expr: '', error: null };
+  try {
+    return { expr: latexToExpr(latex), error: null };
+  } catch (e) {
+    return { expr: '', error: (e as Error).message };
+  }
+}
 
 export default function Scientific() {
   const calc = getCalculator();
@@ -82,7 +111,11 @@ export default function Scientific() {
   const history = useStore((s) => s.history);
   const addHistory = useStore((s) => s.addHistory);
   const exactDefault = useStore((s) => s.exactDefault);
+  const inputStyle = useStore((s) => s.inputStyle);
+  const setStore = useStore((s) => s.set);
+  const textbook = inputStyle === 'textbook';
   const [input, setInput] = useState('');
+  const [latex, setLatex] = useState('');
   const [cursor, setCursor] = useState(0);
   const [last, setLast] = useState<EvalResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,104 +125,133 @@ export default function Scientific() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [memNonZero, setMemNonZero] = useState(false);
   const [sysKeyboard, setSysKeyboard] = useState(false);
+  const [vars, setVars] = useState<Record<string, number>>({});
   const [, force] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mathRef = useRef<MathInputHandle>(null);
   const wide = useMediaQuery('(min-width: 1100px)');
   const coarse = useMediaQuery('(pointer: coarse)');
+  const embedded = typeof location !== 'undefined' && location.pathname.startsWith('/embed');
 
   useEffect(() => setShowExact(exactDefault), [exactDefault]);
 
-  const preview = useMemo(() => {
-    if (!input.trim()) return null;
-    return calc.preview(input);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, prefs, calc]);
+  const conv = useMemo(() => (textbook ? convertLatex(latex) : { expr: input, error: null }), [textbook, latex, input]);
+  const source = conv.expr;
+  const unknowns = useMemo(() => (source.trim() ? calc.unknownSymbols(source).filter((n) => n.length <= 3) : []), [source, calc, prefs]);
+  const extra = useMemo(() => Object.fromEntries(unknowns.filter((n) => Number.isFinite(vars[n])).map((n) => [n, vars[n]])), [unknowns, vars]);
 
-  const inputTex = useMemo(() => {
-    if (!input.trim()) return '';
-    try {
-      const r = calc.preview(input);
-      if (r?.inputTex) return r.inputTex;
-      return '';
-    } catch {
-      return '';
-    }
-  }, [input, calc, prefs]);
+  const preview = useMemo(() => (source.trim() ? calc.preview(source, extra) : null), [source, extra, prefs, calc]);
+  const inputTex = useMemo(() => (!textbook && input.trim() ? calc.preview(input, extra)?.inputTex ?? '' : ''), [textbook, input, extra, calc, prefs]);
 
-  const sig = useMemo(() => signatureAt(input, cursor), [input, cursor]);
+  const sig = useMemo(() => (textbook ? null : signatureAt(input, cursor)), [textbook, input, cursor]);
   const suggestions = useMemo(() => {
+    if (textbook) return [];
     const m = input.slice(0, cursor).match(/([A-Za-z_]\w*)$/);
     if (!m || m[1].length < 2) return [];
     const w = m[1].toLowerCase();
     const lib = calc.libraryFunctionNames.map((n) => ({ name: n, sig: `${n}(…)`, desc: 'From your library' }));
     return [...FN_DOCS, ...lib].filter((d) => d.name.toLowerCase().startsWith(w) && d.name.toLowerCase() !== w).slice(0, 6);
-  }, [input, cursor, calc]);
+  }, [textbook, input, cursor, calc]);
+
+  const isEmpty = textbook ? !latex.trim() : !input.trim();
 
   const syncCursor = () => {
     const el = inputRef.current;
     if (el) setCursor(el.selectionStart ?? el.value.length);
   };
 
-  const replaceRange = useCallback((text: string, start: number, end: number, caretOffset?: number) => {
-    setInput((prev) => {
-      const next = prev.slice(0, start) + text + prev.slice(end);
-      const pos = start + (caretOffset ?? text.length);
-      requestAnimationFrame(() => {
-        const el = inputRef.current;
-        if (el) {
-          el.setSelectionRange(pos, pos);
-          if (!coarse || sysKeyboard) el.focus();
-        }
-        setCursor(pos);
+  const replaceRange = useCallback(
+    (text: string, start: number, end: number) => {
+      setInput((prev) => {
+        const next = prev.slice(0, start) + text + prev.slice(end);
+        const pos = start + text.length;
+        requestAnimationFrame(() => {
+          const el = inputRef.current;
+          if (el) {
+            el.setSelectionRange(pos, pos);
+            if (!coarse || sysKeyboard) el.focus();
+          }
+          setCursor(pos);
+        });
+        return next;
       });
-      return next;
-    });
-    setError(null);
-  }, [coarse, sysKeyboard]);
+      setError(null);
+    },
+    [coarse, sysKeyboard],
+  );
 
-  const insert = useCallback((text: string) => {
-    const el = inputRef.current;
-    let start = el?.selectionStart ?? cursor;
-    let end = el?.selectionEnd ?? cursor;
-    if (document.activeElement !== el) {
-      start = cursor;
-      end = cursor;
-    }
-    // continue from the previous answer when starting with an operator
-    if (!input && last?.ok && OPERATOR_START.test(text)) {
-      replaceRange(`ans${text}`, 0, 0);
-      return;
-    }
-    replaceRange(text, start, end);
-  }, [cursor, input, last, replaceRange]);
+  const insert = useCallback(
+    (key: Key) => {
+      if (textbook) {
+        const m = mathRef.current;
+        if (!m) return;
+        if (m.isEmpty() && last?.ok && OPERATOR_START.test(key.insert ?? '')) m.insert('\\operatorname{ans}');
+        m.insert(key.latex ?? key.insert ?? '');
+        if (!coarse) m.focus();
+        setError(null);
+        return;
+      }
+      const text = key.insert ?? '';
+      const el = inputRef.current;
+      let start = el?.selectionStart ?? cursor;
+      let end = el?.selectionEnd ?? cursor;
+      if (document.activeElement !== el) {
+        start = cursor;
+        end = cursor;
+      }
+      if (!input && last?.ok && OPERATOR_START.test(text)) {
+        replaceRange(`ans${text}`, 0, 0);
+        return;
+      }
+      replaceRange(text, start, end);
+    },
+    [textbook, cursor, input, last, replaceRange, coarse],
+  );
+
+  const clearInput = () => {
+    setInput('');
+    setLatex('');
+    mathRef.current?.setValue('');
+    setCursor(0);
+    setError(null);
+  };
 
   const evaluate = useCallback(() => {
-    const src = input.trim();
+    // read the editor directly so a very fast "=" never sees stale state
+    const live = textbook ? convertLatex(mathRef.current?.getValue() ?? latex) : conv;
+    if (live.error) {
+      setError(live.error);
+      haptic(20);
+      return;
+    }
+    const src = live.expr.trim();
     if (!src) return;
-    const r = calc.evaluate(src);
+    const missing = unknowns.filter((n) => !Number.isFinite(vars[n]));
+    const r = calc.evaluate(src, extra);
     if (!r.ok) {
-      setError(r.error ?? 'Error');
+      setError(missing.length && /Unknown variable/.test(r.error ?? '') ? `Enter a value for ${missing.join(', ')} below` : r.error ?? 'Error');
       haptic(20);
       return;
     }
     setError(null);
     setLast(r);
-    setInput('');
-    setCursor(0);
+    const savedLatex = textbook ? mathRef.current?.getValue() ?? latex : undefined;
+    clearInput();
     setHistIdx(-1);
     setShowExact(exactDefault);
     setMemNonZero(Number(calc.memoryRecall()) !== 0);
-    addHistory({ input: src, result: r.text, tex: r.tex, inputTex: r.inputTex });
+    addHistory({ input: src, result: r.text, tex: r.tex, inputTex: r.inputTex, latex: savedLatex });
     emitEmbed('result', { input: src, result: r.text, tex: r.tex });
     force((n) => n + 1);
-  }, [input, calc, addHistory, exactDefault]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conv, source, unknowns, vars, extra, calc, textbook, latex, addHistory, exactDefault]);
 
   const press = (key: Key) => {
     haptic();
     const kk = shift && key.shift ? key.shift : key;
     if (shift && key.action !== 'shift') setShift(false);
     if (kk.insert !== undefined) {
-      insert(kk.insert);
+      insert(kk);
       return;
     }
     switch (kk.action) {
@@ -197,18 +259,19 @@ export default function Scientific() {
         evaluate();
         break;
       case 'clear':
-        setInput('');
-        setCursor(0);
-        setError(null);
-        if (!input) setLast(null);
+        if (isEmpty) setLast(null);
+        clearInput();
         break;
       case 'back': {
+        if (textbook) {
+          mathRef.current?.command('deleteBackward');
+          break;
+        }
         const el = inputRef.current;
         const s = el?.selectionStart ?? cursor;
         const e = el?.selectionEnd ?? cursor;
         if (s !== e) replaceRange('', s, e);
         else if (s > 0) {
-          // delete whole function names like "sin(" in one step
           const before = input.slice(0, s);
           const m = before.match(/([A-Za-z_]\w*\(|\s(?:mod)\s|ans)$/);
           const n = m ? m[1].length : 1;
@@ -224,6 +287,10 @@ export default function Scientific() {
         break;
       case 'left':
       case 'right': {
+        if (textbook) {
+          mathRef.current?.command(kk.action === 'left' ? 'moveToPreviousChar' : 'moveToNextChar');
+          break;
+        }
         const p = Math.max(0, Math.min(input.length, cursor + (kk.action === 'left' ? -1 : 1)));
         setCursor(p);
         inputRef.current?.setSelectionRange(p, p);
@@ -233,9 +300,10 @@ export default function Scientific() {
       case 'mminus':
         calc.memoryAdd(kk.action === 'mplus' ? 1 : -1);
         setMemNonZero(Number(calc.memoryRecall()) !== 0);
+        toast(`Memory: ${calc.format(calc.memoryRecall()).text}`);
         break;
       case 'mr':
-        insert('M');
+        insert({ label: 'M', insert: 'M', latex: 'M' });
         break;
       case 'mc':
         calc.memoryClear();
@@ -247,31 +315,36 @@ export default function Scientific() {
     }
   };
 
+  const recall = (dir: 1 | -1) => {
+    if (!history.length) return;
+    const i = Math.max(-1, Math.min(histIdx + dir, history.length - 1));
+    setHistIdx(i);
+    const h = i >= 0 ? history[i] : null;
+    if (textbook) {
+      const l = h ? h.latex ?? h.input : '';
+      setLatex(l);
+      mathRef.current?.setValue(l);
+    } else setInput(h ? h.input : '');
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (suggestions.length && e.ctrlKey) acceptSuggestion(suggestions[0].name);
-      else evaluate();
-    } else if (e.key === 'Escape') {
-      setInput('');
-      setError(null);
-    } else if (e.key === 'Tab' && suggestions.length) {
+      evaluate();
+    } else if (e.key === 'Escape') clearInput();
+    else if (e.key === 'Tab' && suggestions.length) {
       e.preventDefault();
       acceptSuggestion(suggestions[0].name);
-    } else if (e.key === 'ArrowUp' && history.length) {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const i = Math.min(histIdx + 1, history.length - 1);
-      setHistIdx(i);
-      setInput(history[i].input);
+      recall(1);
       requestAnimationFrame(() => syncCursor());
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const i = histIdx - 1;
-      setHistIdx(Math.max(-1, i));
-      setInput(i >= 0 ? history[i].input : '');
+      recall(-1);
     } else if (!input && last?.ok && e.key.length === 1 && /[+*/^!%]/.test(e.key) && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
-      insert(e.key);
+      insert({ label: e.key, insert: e.key });
     }
   };
 
@@ -279,14 +352,28 @@ export default function Scientific() {
     const m = input.slice(0, cursor).match(/([A-Za-z_]\w*)$/);
     if (!m) return;
     const start = cursor - m[1].length;
-    const isFn = name !== 'to';
-    replaceRange(isFn ? `${name}(` : `${name} `, start, cursor);
+    replaceRange(name !== 'to' ? `${name}(` : `${name} `, start, cursor);
+  };
+
+  const loadEntry = (h: HistoryEntry) => {
+    if (textbook) {
+      const l = h.latex ?? h.input;
+      setLatex(l);
+      mathRef.current?.setValue(l);
+      requestAnimationFrame(() => mathRef.current?.focus());
+    } else {
+      setInput(h.input);
+      setCursor(h.input.length);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+    setPanelOpen(false);
   };
 
   const exact = last?.exact;
   const resultTex = last ? (showExact && exact ? exact.tex : last.tex) : '';
   const resultText = last ? (showExact && exact ? exact.text : last.text) : '';
   const angleLabel = prefs.angle.toUpperCase();
+  const alts = useMemo(() => (last?.ok ? alternativeForms(last.value, prefs.angle, { dms: /a(sin|cos|tan|rg)|deg|dms|°|Pol/.test(last.input) }).filter((a) => a.text !== resultText && a.text !== last.text) : []), [last, prefs.angle, resultText]);
 
   const renderKey = (key: Key, i: number) => {
     const kk = shift && key.shift ? key.shift : key;
@@ -297,10 +384,12 @@ export default function Scientific() {
         key={i}
         className={`key key-${kk.cls ?? 'fn'}${key.wide ? ' key-wide' : ''}${active ? ' key-active' : ''}${shift && key.shift ? ' key-shifted' : ''}`}
         onClick={() => press(key)}
+        onMouseDown={(e) => e.preventDefault()}
         title={kk.title}
         aria-label={kk.title ?? (typeof label === 'string' ? label : undefined)}
       >
         {label}
+        {!shift && key.shift && <span className="key-alt" aria-hidden />}
       </button>
     );
   };
@@ -308,15 +397,10 @@ export default function Scientific() {
   const panel = (
     <SidePanel
       onInsert={(t) => {
-        insert(t);
+        insert({ label: t, insert: t, latex: t });
         setPanelOpen(false);
       }}
-      onLoad={(t) => {
-        setInput(t);
-        setCursor(t.length);
-        setPanelOpen(false);
-        requestAnimationFrame(() => inputRef.current?.focus());
-      }}
+      onLoad={loadEntry}
     />
   );
 
@@ -328,13 +412,38 @@ export default function Scientific() {
             <button className="badge accent" onClick={() => press({ label: '', action: 'angle' })} title="Angle unit (click to change)">
               {angleLabel}
             </button>
-            <span className="badge">{prefs.notation === 'auto' ? 'NORM' : prefs.notation.toUpperCase()}{prefs.notation !== 'auto' ? ` ${prefs.digits}` : ''}</span>
+            <span className="badge">
+              {prefs.notation === 'auto' ? 'NORM' : prefs.notation.toUpperCase()}
+              {prefs.notation !== 'auto' ? ` ${prefs.digits}` : ''}
+            </span>
             {prefs.bignumber && <span className="badge">HP</span>}
-            {memNonZero && <span className="badge" title={`Memory: ${calc.format(calc.memoryRecall()).text}`}>M</span>}
+            {memNonZero && (
+              <span className="badge" title={`Memory: ${calc.format(calc.memoryRecall()).text}`}>
+                M
+              </span>
+            )}
             {shift && <span className="badge accent">2nd</span>}
             <div className="spacer" />
+            <button
+              className="badge input-style"
+              onClick={() => {
+                setStore({ inputStyle: textbook ? 'linear' : 'textbook' });
+                clearInput();
+              }}
+              title={textbook ? 'Textbook input: fractions stack, roots have a radical. Click for one-line input.' : 'One-line input. Click for textbook input.'}
+            >
+              {textbook ? 'Textbook' : 'Linear'}
+            </button>
             {coarse && (
-              <button className={`icon-btn sm${sysKeyboard ? ' active' : ''}`} onClick={() => setSysKeyboard((v) => !v)} aria-label="Use system keyboard" title="System keyboard">
+              <button
+                className={`icon-btn sm${sysKeyboard ? ' active' : ''}`}
+                onClick={() => {
+                  setSysKeyboard((v) => !v);
+                  if (textbook) (sysKeyboard ? mathRef.current?.hideKeyboard() : mathRef.current?.showKeyboard());
+                }}
+                aria-label="Keyboard"
+                title="Keyboard"
+              >
                 <Keyboard size={16} />
               </button>
             )}
@@ -346,7 +455,7 @@ export default function Scientific() {
           </div>
 
           <div className="display-echo" aria-live="polite">
-            {input ? (
+            {!isEmpty && !textbook ? (
               inputTex ? <Tex tex={inputTex} /> : <span className="muted">{input}</span>
             ) : last ? (
               <>
@@ -354,31 +463,63 @@ export default function Scientific() {
                 <span className="muted"> =</span>
               </>
             ) : (
-              <span className="muted small">Type an expression or use the keypad. Try: 2^10, sin(30), integral(x^2, x, 0, 3), 5 km to mi</span>
+              <span className="muted small">
+                {textbook ? 'Type naturally — / makes a fraction, ^ a power. Or use the keypad.' : 'Type an expression or use the keypad. Try: 2^10, sin(30), integral(x^2, x, 0, 3), 5 km to mi'}
+              </span>
             )}
           </div>
 
-          <input
-            ref={inputRef}
-            className="display-input"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setCursor(e.target.selectionStart ?? e.target.value.length);
-              setError(null);
-              setHistIdx(-1);
-            }}
-            onKeyDown={onKeyDown}
-            onSelect={syncCursor}
-            onClick={syncCursor}
-            inputMode={coarse && !sysKeyboard ? 'none' : 'text'}
-            autoFocus={!coarse && !location.pathname.startsWith('/embed')}
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="off"
-            aria-label="Expression"
-            placeholder={last ? 'ans …' : '0'}
-          />
+          {textbook ? (
+            <MathInput
+              ref={mathRef}
+              className="display-math"
+              onChange={(l) => {
+                setLatex(l);
+                setError(null);
+                setHistIdx(-1);
+              }}
+              onEnter={evaluate}
+              onKey={(e) => {
+                if (e.key === 'Escape') {
+                  clearInput();
+                  return true;
+                }
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && (e.ctrlKey || e.altKey)) {
+                  recall(e.key === 'ArrowUp' ? 1 : -1);
+                  return true;
+                }
+                if (mathRef.current?.isEmpty() && last?.ok && e.key.length === 1 && /[+*/^!%]/.test(e.key) && !e.ctrlKey && !e.metaKey) {
+                  mathRef.current.insert('\\operatorname{ans}');
+                }
+                return false;
+              }}
+              autoFocus={!coarse && !embedded}
+              placeholder={last ? '\\operatorname{ans}\\ldots' : '0'}
+              ariaLabel="Expression"
+            />
+          ) : (
+            <input
+              ref={inputRef}
+              className="display-input"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setCursor(e.target.selectionStart ?? e.target.value.length);
+                setError(null);
+                setHistIdx(-1);
+              }}
+              onKeyDown={onKeyDown}
+              onSelect={syncCursor}
+              onClick={syncCursor}
+              inputMode={coarse && !sysKeyboard ? 'none' : 'text'}
+              autoFocus={!coarse && !embedded}
+              spellCheck={false}
+              autoComplete="off"
+              autoCapitalize="off"
+              aria-label="Expression"
+              placeholder={last ? 'ans …' : '0'}
+            />
+          )}
 
           {sig && (
             <div className="sig-help">
@@ -396,13 +537,24 @@ export default function Scientific() {
               <span className="muted small">Tab</span>
             </div>
           )}
+          {unknowns.length > 0 && (
+            <div className="calc-vars" aria-label="Variable values">
+              <span className="small muted">Values:</span>
+              {unknowns.map((n) => (
+                <label key={n} className="calc-var">
+                  <span>{n} =</span>
+                  <NumberInput value={vars[n] ?? NaN} allowEmpty onChange={(v) => setVars((s) => ({ ...s, [n]: v }))} ariaLabel={`Value of ${n}`} placeholder="?" />
+                </label>
+              ))}
+            </div>
+          )}
 
           <div className="display-result">
             {error ? (
               <span className="error-text" role="alert">
                 {error}
               </span>
-            ) : input ? (
+            ) : !isEmpty ? (
               preview && preview.kind !== 'empty' ? (
                 <span className="result-preview">
                   <Tex tex={preview.exact && showExact ? preview.exact.tex : preview.tex} />
@@ -413,7 +565,6 @@ export default function Scientific() {
                 <span className="result-value num">
                   <Tex tex={resultTex} />
                 </span>
-                {exact && showExact && exact.mixed && <span className="muted small">= {exact.mixed.text}</span>}
                 {exact && <span className="muted small">{showExact ? `≈ ${last.text}` : `= ${exact.text}`}</span>}
                 <button className="icon-btn sm" onClick={() => copyText(resultText)} aria-label="Copy result" title="Copy">
                   <Copy size={15} />
@@ -423,18 +574,26 @@ export default function Scientific() {
               <span className="result-value muted">0</span>
             )}
           </div>
+          {isEmpty && alts.length > 0 && (
+            <div className="alt-forms" aria-label="Other forms of the answer">
+              {alts.map((a) => (
+                <button key={a.label} className="alt-form" onClick={() => copyText(a.text, `Copied ${a.text}`)} title={`${a.label} — click to copy`}>
+                  <span className="alt-label">{a.label}</span>
+                  <Tex tex={a.tex} />
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="keypad" aria-label="Keypad">
           <div className="keys-fn">{FN_KEYS.map(renderKey)}</div>
-          <div className="keys-num">
-            {NUM_KEYS.map(renderKey)}
-          </div>
+          <div className="keys-num">{NUM_KEYS.map(renderKey)}</div>
           <div className="keys-nav">
-            <button className="key key-act" onClick={() => press({ label: '', action: 'left' })} aria-label="Cursor left">
+            <button className="key key-act" onMouseDown={(e) => e.preventDefault()} onClick={() => press({ label: '', action: 'left' })} aria-label="Cursor left">
               <ChevronLeft size={18} />
             </button>
-            <button className="key key-act" onClick={() => press({ label: '', action: 'right' })} aria-label="Cursor right">
+            <button className="key key-act" onMouseDown={(e) => e.preventDefault()} onClick={() => press({ label: '', action: 'right' })} aria-label="Cursor right">
               <ChevronRight size={18} />
             </button>
           </div>
@@ -460,146 +619,6 @@ export default function Scientific() {
           </>
         )
       )}
-    </div>
-  );
-}
-
-function SigHelp({ sig, arg }: { sig: string; arg: number }) {
-  const { name, args } = sigParts(sig);
-  return (
-    <code>
-      {name}(
-      {args.map((a, i) => (
-        <span key={i}>
-          {i > 0 && ', '}
-          <span className={i === arg ? 'sig-active' : ''}>{a}</span>
-        </span>
-      ))}
-      )
-    </code>
-  );
-}
-
-function SidePanel({ onInsert, onLoad }: { onInsert: (t: string) => void; onLoad: (t: string) => void }) {
-  const [tab, setTab] = useState<'history' | 'vars' | 'consts' | 'fns'>('history');
-  const history = useStore((s) => s.history);
-  const removeHistory = useStore((s) => s.removeHistory);
-  const clearHistory = useStore((s) => s.clearHistory);
-  const [q, setQ] = useState('');
-  const calc = getCalculator();
-  const [, force] = useState(0);
-  const vars = calc.variables().filter((v) => !(v.name === 'M' && v.text === '0'));
-  const fns = FN_DOCS.filter((d) => !q || `${d.name} ${d.desc} ${d.cat}`.toLowerCase().includes(q.toLowerCase()));
-
-  return (
-    <div className="side-panel">
-      <div style={{ padding: '10px 10px 0' }}>
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          size="sm"
-          options={[
-            { value: 'history', label: 'History' },
-            { value: 'vars', label: 'Variables' },
-            { value: 'consts', label: 'Constants' },
-            { value: 'fns', label: 'Functions' },
-          ]}
-        />
-      </div>
-      <div className="side-list">
-        {tab === 'history' &&
-          (history.length === 0 ? (
-            <div className="empty">
-              <History size={22} />
-              Your calculations will appear here.
-            </div>
-          ) : (
-            <>
-              {history.slice(0, 200).map((h) => (
-                <div key={h.id} className="hist-item">
-                  <button className="hist-input" onClick={() => onLoad(h.input)} title="Edit this expression">
-                    {h.inputTex ? <Tex tex={h.inputTex} /> : h.input}
-                  </button>
-                  <div className="row nowrap">
-                    <button className="hist-result num" onClick={() => onInsert(h.result.replace(/,/g, '').replace(/E/, 'e'))} title="Insert result">
-                      = {h.tex ? <Tex tex={h.tex} /> : h.result}
-                    </button>
-                    <div className="spacer" />
-                    <button className="icon-btn sm hist-act" onClick={() => copyText(h.result)} aria-label="Copy">
-                      <Copy size={14} />
-                    </button>
-                    <button className="icon-btn sm hist-act" onClick={() => removeHistory(h.id)} aria-label="Delete">
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button className="btn btn-ghost btn-sm" style={{ margin: 8 }} onClick={clearHistory}>
-                <Trash2 size={14} /> Clear history
-              </button>
-            </>
-          ))}
-        {tab === 'vars' && (
-          <>
-            {vars.length === 0 ? (
-              <div className="empty">
-                No variables yet. Assign with <code>a = 5</code> or define <code>f(x) = x^2</code>.
-              </div>
-            ) : (
-              vars.map((v) => (
-                <div key={v.name} className="var-item">
-                  <button className="var-name" onClick={() => onInsert(v.name)}>
-                    <code>{v.isFunction ? v.text : v.name}</code>
-                  </button>
-                  {!v.isFunction && <span className="num var-val">{v.tex ? <Tex tex={v.tex} /> : v.text}</span>}
-                  <div className="spacer" />
-                  <button
-                    className="icon-btn sm"
-                    onClick={() => {
-                      calc.deleteVariable(v.name);
-                      force((n) => n + 1);
-                    }}
-                    aria-label={`Delete ${v.name}`}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))
-            )}
-            {calc.libraryFunctionNames.length > 0 && (
-              <div className="small muted" style={{ padding: '8px 12px' }}>
-                Library: {calc.libraryFunctionNames.join(', ')} — edit in Code & Library.
-              </div>
-            )}
-          </>
-        )}
-        {tab === 'consts' &&
-          CONSTANTS.map((c) => (
-            <button key={c.insert} className="const-item" onClick={() => onInsert(c.insert)} title={`Insert ${c.insert}`}>
-              <span className="const-sym">{c.sym}</span>
-              <span className="stack-sm" style={{ gap: 0, minWidth: 0 }}>
-                <span>{c.name}</span>
-                <span className="small muted num">{c.value}</span>
-              </span>
-            </button>
-          ))}
-        {tab === 'fns' && (
-          <>
-            <div className="row nowrap" style={{ padding: '4px 10px 8px' }}>
-              <Search size={15} className="muted" />
-              <input className="input" style={{ height: 30 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search functions" aria-label="Search functions" />
-            </div>
-            {fns.map((d) => (
-              <button key={d.name} className="const-item" onClick={() => onInsert(d.name === 'to' ? ' to ' : `${d.name}(`)}>
-                <span className="stack-sm" style={{ gap: 0, minWidth: 0 }}>
-                  <code>{d.sig}</code>
-                  <span className="small muted">{d.desc}</span>
-                </span>
-              </button>
-            ))}
-          </>
-        )}
-      </div>
     </div>
   );
 }

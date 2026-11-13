@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Eye, EyeOff, X, ZoomIn, ZoomOut, Home, Settings2, Share2, Download, Play, Pause, Ellipsis, AlertCircle, ChevronDown, ChevronUp, StickyNote, Code2, ImageDown } from 'lucide-react';
+import { Plus, Eye, EyeOff, X, ZoomIn, ZoomOut, Home, Settings2, Share2, Download, Play, Pause, Ellipsis, AlertCircle, ChevronDown, ChevronUp, StickyNote, Code2, ImageDown, Maximize2, Sparkles, SquareFunction } from 'lucide-react';
 import { parse as mparse } from 'mathjs';
 import { compileGraph, type CompiledItem, type GraphLine } from '../../../core/graph/parse';
 import { renderSvg } from '../../../core/graph/svg';
@@ -11,6 +11,10 @@ import { useStore, uid, DEFAULT_VIEW, type GraphExpr, type GraphView } from '../
 import { libraryLines } from '../../engine';
 import { Tex, copyText, toast, useMediaQuery, useResolvedTheme, Segmented, NumberInput, fmtInput } from '../../ui';
 import { GraphCanvas, type GraphCanvasHandle, type StyledItem } from './GraphCanvas';
+import { Gallery } from './Gallery';
+import { Palette, trackExprInput } from './Palette';
+import { EXAMPLE_COUNT } from './examples';
+import { sampleItem } from '../../../core/graph/sample';
 import { PUBLIC_ORIGIN } from '../../platform';
 import '../../../styles/modes/graph.css';
 
@@ -96,6 +100,8 @@ export default function GraphMode() {
   const [selected, setSelected] = useState<string | null>(graph.exprs[0]?.id ?? null);
   const [showSettings, setShowSettings] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const canvasRef = useRef<GraphCanvasHandle>(null);
   const narrow = useMediaQuery('(max-width: 860px)');
@@ -174,6 +180,39 @@ export default function GraphMode() {
     download(new Blob([svg], { type: 'image/svg+xml' }), 'calci-graph.svg');
   };
 
+  /** Fit the y-range to the visible curves (robust to asymptotes). */
+  const zoomFit = () => {
+    const vp = canvasRef.current?.viewport();
+    if (!vp) return;
+    const ys: number[] = [];
+    const xsPts: number[] = [];
+    styled.forEach((s) => {
+      if (s.hidden) return;
+      const it = s.item;
+      if (it.kind === 'explicit' && it.fn) {
+        for (let i = 0; i <= 400; i++) {
+          const x = vp.xmin + ((vp.xmax - vp.xmin) * i) / 400;
+          const y = it.fn(x);
+          if (Number.isFinite(y)) ys.push(y);
+        }
+      } else if (it.kind === 'points' && it.points) {
+        for (const [px, py] of it.points) if (Number.isFinite(py)) (ys.push(py), xsPts.push(px));
+      } else if (['polar', 'parametric', 'implicit', 'explicitX'].includes(it.kind)) {
+        for (const poly of sampleItem(it, vp, graph.settings.angle)) for (let i = 1; i < poly.length; i += 2) ys.push(poly[i]);
+      }
+    });
+    if (ys.length < 2) {
+      toast('Nothing to fit yet');
+      return;
+    }
+    ys.sort((a, b) => a - b);
+    const lo = ys[Math.floor(ys.length * 0.03)];
+    const hi = ys[Math.ceil(ys.length * 0.97) - 1];
+    const span = Math.max(hi - lo, 1e-6) * 1.3;
+    const v = graph.view;
+    setView({ cx: v.cx, cy: (lo + hi) / 2, xspan: v.xspan, yspan: span });
+  };
+
   const shareState = () => ({
     e: graph.exprs.map((e) => [e.text, e.color, e.hidden ? 1 : 0, e.slider ? [e.slider.min, e.slider.max, e.slider.step] : 0]),
     v: graph.view,
@@ -198,6 +237,12 @@ export default function GraphMode() {
               }} title="Add a text note">
               <StickyNote size={14} /> Note
             </button>
+            <button className={`btn btn-ghost btn-sm${showPalette ? ' active-btn' : ''}`} onClick={() => setShowPalette((v) => !v)} title="Insert functions and symbols" aria-pressed={showPalette}>
+              <SquareFunction size={14} /> Functions
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowGallery(true)} title="Examples of everything Calci can plot">
+              <Sparkles size={14} /> Examples
+            </button>
             <div className="spacer" />
             {narrow && (
               <button className="icon-btn sm" onClick={() => setPanelOpen((v) => !v)} aria-label={panelOpen ? 'Collapse expressions' : 'Expand expressions'}>
@@ -205,6 +250,7 @@ export default function GraphMode() {
               </button>
             )}
           </div>
+          {showPalette && <Palette />}
           <div className="expr-list">
             {graph.exprs.map((e, i) => (
               <ExprRow key={e.id} index={i} expr={e} item={compiled.items[i]} selected={selected === e.id} onSelect={() => setSelected(e.id)} />
@@ -218,7 +264,10 @@ export default function GraphMode() {
             </button>
             <div className="expr-help small muted">
               Try <code>y = x^2</code>, <code>x^2 + y^2 = 9</code>, <code>r = 2sin(4θ)</code>, <code>(cos t, sin 2t)</code>, <code>y &lt; |x|</code>,{' '}
-              <code>{'y = x {0 < x < 3}'}</code> or <code>f(x) = …</code>. Unknown letters become sliders.
+              <code>{'y = x {0 < x < 3}'}</code>, <code>f(x) = …</code> then <code>{"y = f'(x)"}</code>. Unknown letters become sliders.{' '}
+              <button className="link-btn" onClick={() => setShowGallery(true)}>
+                Browse {EXAMPLE_COUNT} examples →
+              </button>
             </div>
           </div>
         </aside>
@@ -236,6 +285,9 @@ export default function GraphMode() {
           <button className="icon-btn" onClick={() => setView(DEFAULT_VIEW)} aria-label="Default view" title="Default view">
             <Home size={18} />
           </button>
+          <button className="icon-btn" onClick={zoomFit} aria-label="Zoom to fit" title="Zoom to fit the curves">
+            <Maximize2 size={17} />
+          </button>
           <span className="tool-sep" />
           <button className={`icon-btn${showSettings ? ' active' : ''}`} onClick={() => (setShowSettings((v) => !v), setShowShare(false))} aria-label="Graph settings" title="Graph settings">
             <Settings2 size={18} />
@@ -247,6 +299,7 @@ export default function GraphMode() {
           )}
         </div>
         {showSettings && <SettingsPopover onClose={() => setShowSettings(false)} viewport={() => canvasRef.current?.viewport()} />}
+        {showGallery && <Gallery onClose={() => setShowGallery(false)} />}
         {showShare && (
           <div className="graph-popover card">
             <div className="section-title">Share & export</div>
@@ -393,7 +446,11 @@ function ExprRow({ index, expr, item, selected, onSelect }: { index: number; exp
               setFocused(true);
               onSelect();
             }}
-            onBlur={() => setFocused(false)}
+            onBlur={(e) => {
+              trackExprInput(e.currentTarget);
+              setFocused(false);
+            }}
+            onSelect={(e) => trackExprInput(e.currentTarget)}
             onKeyDown={onKeyDown}
             spellCheck={false}
             autoComplete="off"

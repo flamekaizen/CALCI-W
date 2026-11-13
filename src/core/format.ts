@@ -223,7 +223,8 @@ export function formatValue(math: MathJsInstance, value: unknown, o: FormatOptio
   if (value === undefined || value === null) return { text: '', tex: '' };
   if (typeof value === 'number') return formatNumber(value, o);
   if (typeof value === 'boolean') return { text: String(value), tex: `\\text{${value}}` };
-  if (typeof value === 'string') return { text: JSON.stringify(value), tex: `\\text{${value.replace(/[{}\\]/g, '')}}` };
+  // strings only come from Calci's own functions (e.g. quorem → "3 R 2"); safe mode rejects string input
+  if (typeof value === 'string') return { text: value, tex: `\\text{${value.replace(/[{}\\$&#^_%~]/g, '')}}` };
   if (typeof value === 'function') {
     const f = value as any;
     const sig = f.syntax ?? `${f.name || 'f'}(…)`;
@@ -362,4 +363,146 @@ export function expressionTex(math: MathJsInstance, node: any): string {
       return undefined;
     },
   });
+}
+
+/* ------------------------------------------------------------ alternative forms */
+
+export interface AltForm {
+  label: string;
+  text: string;
+  tex: string;
+}
+
+const SI_PREFIX: [number, string][] = [
+  [1e24, 'Y'], [1e21, 'Z'], [1e18, 'E'], [1e15, 'P'], [1e12, 'T'], [1e9, 'G'], [1e6, 'M'], [1e3, 'k'],
+  [1, ''], [1e-3, 'm'], [1e-6, 'µ'], [1e-9, 'n'], [1e-12, 'p'], [1e-15, 'f'], [1e-18, 'a'],
+];
+
+/** Decimal expansion of p/q with the repeating block marked, e.g. 1/6 → 0.1(6). */
+export function recurringDecimal(p: number, q: number, maxDigits = 60): { text: string; tex: string } | null {
+  if (!Number.isInteger(p) || !Number.isInteger(q) || q === 0) return null;
+  const sign = p * q < 0 ? '-' : '';
+  let num = Math.abs(p);
+  const den = Math.abs(q);
+  const int = Math.floor(num / den);
+  num %= den;
+  if (num === 0) return null;
+  const seen = new Map<number, number>();
+  let digits = '';
+  while (num !== 0 && !seen.has(num) && digits.length < maxDigits) {
+    seen.set(num, digits.length);
+    num *= 10;
+    digits += String(Math.floor(num / den));
+    num %= den;
+  }
+  if (num === 0) return null; // terminating: nothing special to show
+  if (!seen.has(num)) return null; // period too long
+  const start = seen.get(num)!;
+  const pre = digits.slice(0, start);
+  const rep = digits.slice(start);
+  return { text: `${sign}${int}.${pre}(${rep})`, tex: `${sign}${int}.${pre}\\overline{${rep}}` };
+}
+
+/** Degrees → D°M′S″ */
+export function toDMS(deg: number): { text: string; tex: string } {
+  const sign = deg < 0 ? '-' : '';
+  let a = Math.abs(deg);
+  let d = Math.floor(a);
+  a = (a - d) * 60;
+  let m = Math.floor(a);
+  let s = Math.round((a - m) * 60 * 1000) / 1000;
+  if (s >= 60) {
+    s -= 60;
+    m++;
+  }
+  if (m >= 60) {
+    m -= 60;
+    d++;
+  }
+  return { text: `${sign}${d}°${m}′${s}″`, tex: `${sign}${d}^{\\circ}${m}'${s}''` };
+}
+
+export function engineeringSI(v: number, digits = 6): { text: string; tex: string } | null {
+  if (!Number.isFinite(v) || v === 0) return null;
+  const a = Math.abs(v);
+  const pf = SI_PREFIX.find(([f]) => a >= f) ?? SI_PREFIX[SI_PREFIX.length - 1];
+  if (pf[1] === '') return null;
+  const m = Number((v / pf[0]).toPrecision(digits));
+  return { text: `${m} ${pf[1]}`, tex: `${m}\\,\\mathrm{${pf[1]}}` };
+}
+
+function primeFactorTex(n: number): { text: string; tex: string } | null {
+  if (!Number.isSafeInteger(n) || Math.abs(n) < 4) return null;
+  let m = Math.abs(n);
+  const f: [number, number][] = [];
+  for (let p = 2; p * p <= m; p += p === 2 ? 1 : 2) {
+    let k = 0;
+    while (m % p === 0) {
+      m /= p;
+      k++;
+    }
+    if (k) f.push([p, k]);
+  }
+  if (m > 1) f.push([m, 1]);
+  if (f.length === 1 && f[0][1] === 1) return { text: 'prime', tex: '\\text{prime}' };
+  const sign = n < 0 ? '-' : '';
+  return {
+    text: sign + f.map(([p, k]) => (k > 1 ? `${p}^${k}` : `${p}`)).join(' × '),
+    tex: sign + f.map(([p, k]) => (k > 1 ? `${p}^{${k}}` : `${p}`)).join(' \\times '),
+  };
+}
+
+/**
+ * Every useful way of writing a result, like the FORMAT menu of a ClassWiz:
+ * exact, mixed, recurring decimal, scientific, SI-prefixed, DMS, prime factors,
+ * hex/binary, polar form for complex numbers.
+ */
+export function alternativeForms(value: unknown, angle: 'rad' | 'deg' | 'grad' = 'rad', opts: { dms?: boolean } = {}): AltForm[] {
+  const out: AltForm[] = [];
+  const v = value as any;
+  if (v && v.isComplex && Math.abs(v.im) > 1e-14) {
+    const r = Math.hypot(v.re, v.im);
+    let th = Math.atan2(v.im, v.re);
+    const unit = angle === 'deg' ? '°' : angle === 'grad' ? 'ᵍ' : '';
+    if (angle === 'deg') th = (th * 180) / Math.PI;
+    if (angle === 'grad') th = (th * 200) / Math.PI;
+    const rs = Number(r.toPrecision(10));
+    const ts = Number(th.toPrecision(10));
+    const re = exactForm(r);
+    out.push({ label: 'Polar', text: `${rs}∠${ts}${unit}`, tex: `${re ? re.tex : rs}\\angle ${ts}${angle === 'deg' ? '^{\\circ}' : ''}` });
+    const thr = Math.atan2(v.im, v.re);
+    out.push({ label: 'Exponential', text: `${rs}·e^(${Number(thr.toPrecision(8))}i)`, tex: `${re ? re.tex : rs}\\,e^{${Number(thr.toPrecision(8))}i}` });
+    return out;
+  }
+  const x = typeof value === 'number' ? value : v?.isBigNumber ? v.toNumber() : v?.isFraction ? v.valueOf() : NaN;
+  if (!Number.isFinite(x)) return out;
+  const ex = exactForm(x);
+  if (ex) out.push({ label: ex.kind === 'fraction' ? 'Fraction' : 'Exact', text: ex.text, tex: ex.tex });
+  if (ex?.mixed) out.push({ label: 'Mixed', text: ex.mixed.text, tex: ex.mixed.tex });
+  const fr = toFraction(x, 10000, 1e-12);
+  if (fr && fr[1] > 1) {
+    const rd = recurringDecimal(fr[0], fr[1]);
+    if (rd) out.push({ label: 'Recurring', text: rd.text, tex: rd.tex });
+  }
+  if (x !== 0 && (Math.abs(x) >= 1e4 || Math.abs(x) < 1e-2)) {
+    const [m, e] = x.toExponential(9).split('e');
+    const ms = String(Number(m));
+    out.push({ label: 'Scientific', text: `${ms}×10^${Number(e)}`, tex: `${ms}\\times10^{${Number(e)}}` });
+  }
+  const si = engineeringSI(x);
+  if (si && (Math.abs(x) >= 1e3 || Math.abs(x) < 1e-3)) out.push({ label: 'SI prefix', text: si.text, tex: si.tex });
+  if (opts.dms && angle === 'deg') {
+    if (!Number.isInteger(x) && Math.abs(x) < 1e6) out.push({ label: 'D°M′S″', ...toDMS(x) });
+  }
+  if (Number.isSafeInteger(x)) {
+    const pf = primeFactorTex(x);
+    if (pf) out.push({ label: 'Prime factors', ...pf });
+    if (Math.abs(x) >= 2) {
+      const hex = (x < 0 ? '-' : '') + Math.abs(x).toString(16).toUpperCase();
+      const bin = (x < 0 ? '-' : '') + Math.abs(x).toString(2);
+      out.push({ label: 'Hex', text: `0x${hex}`, tex: `\\mathtt{${hex}}_{16}` });
+      if (Math.abs(x) < 2 ** 32) out.push({ label: 'Binary', text: `0b${bin}`, tex: `\\mathtt{${bin}}_{2}` });
+    }
+  }
+  return out;
 }

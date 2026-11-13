@@ -64,7 +64,7 @@ export default function App() {
         e.preventDefault();
         setSettings(true);
       } else if (e.altKey && /^[1-9]$/.test(e.key)) {
-        const m = MODES[Number(e.key) - 1];
+        const m = MODES.filter((x) => x.id !== 'guide')[Number(e.key) - 1];
         if (m) {
           e.preventDefault();
           navigate(m.id);
@@ -145,6 +145,7 @@ export default function App() {
         </div>
       )}
       {palette && <CommandPalette onClose={() => setPalette(false)} onSettings={() => setSettings(true)} />}
+      <WelcomeBanner current={mode.id} />
       {settings && <SettingsDrawer onClose={() => setSettings(false)} />}
       <ToastHost />
     </div>
@@ -522,5 +523,34 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
         </div>
       </aside>
     </>
+  );
+}
+
+function WelcomeBanner({ current }: { current: string }) {
+  const onboarded = useStore((s) => s.onboarded);
+  const set = useStore((s) => s.set);
+  if (onboarded || current === 'guide') return null;
+  return (
+    <div className="welcome" role="dialog" aria-label="Welcome">
+      <span className="brand-mark" aria-hidden style={{ width: 30, height: 30 }}>
+        <BrandGlyph size={16} />
+      </span>
+      <div className="welcome-text">
+        <strong>New to Calci?</strong>
+        <span className="small muted">See everything it can do — and what you can plot — in the Guide.</span>
+      </div>
+      <button
+        className="btn btn-primary btn-sm"
+        onClick={() => {
+          set({ onboarded: true });
+          navigate('guide');
+        }}
+      >
+        Open guide
+      </button>
+      <button className="icon-btn sm" onClick={() => set({ onboarded: true })} aria-label="Dismiss">
+        <X size={15} />
+      </button>
+    </div>
   );
 }

@@ -1,0 +1,334 @@
+/* ------------------------------------------------------------------ spreadsheet mode */
+.sps-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sps-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* formula bar */
+.sps-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+.sps-addr {
+  flex: 0 0 auto;
+  min-width: 64px;
+  height: 36px;
+  padding: 0 10px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.sps-fx {
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+.sps-bar-input {
+  flex: 1;
+  min-width: 0;
+}
+.sps-bar-actions {
+  gap: 2px;
+}
+.sps-accept {
+  color: var(--accent-text);
+}
+.sps-status {
+  min-height: 24px;
+  padding: 0 14px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.sps-status.err {
+  color: var(--danger);
+}
+
+/* toolbar */
+.sps-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.sps-toolbar .icon-btn:disabled,
+.sps-toolbar .btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.sps-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.sps-confirm {
+  gap: 6px;
+  padding: 2px 4px 2px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.sps-fill {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-soft);
+}
+.sps-fill-select {
+  width: auto;
+  min-width: 72px;
+  height: 30px;
+}
+
+/* grid */
+.sps-scroll {
+  position: relative;
+  overflow: auto;
+  max-height: min(64vh, 680px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+}
+.sps-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  min-width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sps-grid th {
+  position: sticky;
+  z-index: 2;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+.sps-grid thead th {
+  top: 0;
+  height: 28px;
+  width: 112px;
+  min-width: 112px;
+}
+.sps-grid tbody th {
+  left: 0;
+  width: 44px;
+  min-width: 44px;
+  z-index: 1;
+}
+.sps-grid thead th.sps-corner {
+  left: 0;
+  z-index: 3;
+  width: 44px;
+  min-width: 44px;
+}
+.sps-grid th.on {
+  background: var(--accent-soft-2);
+  color: var(--accent-text);
+}
+.sps-cell {
+  position: relative;
+  height: 32px;
+  max-width: 112px;
+  padding: 0 8px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: cell;
+  scroll-margin: 30px 0 0 46px;
+}
+.sps-cell .sps-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sps-cell.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.sps-cell.err {
+  text-align: center;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--danger-soft);
+}
+.sps-cell.formula::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid var(--accent);
+  border-right: 5px solid transparent;
+  opacity: 0.55;
+}
+.sps-cell.in-range {
+  background: var(--accent-soft);
+}
+.sps-cell.ref {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  border-style: dashed;
+}
+.sps-cell.active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  z-index: 0;
+}
+.sps-grid:focus-visible .sps-cell.active {
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 3px var(--accent-soft-2);
+}
+.sps-cell.editing {
+  overflow: visible;
+  padding: 0;
+  z-index: 1;
+}
+.sps-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  min-width: 100%;
+  padding: 0 7px;
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* quick stats */
+.sps-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  font-size: 12.5px;
+}
+.sps-stats-label {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.sps-stat .k {
+  color: var(--text-3);
+}
+.sps-stat .v {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.sps-help {
+  margin: 0 2px;
+  line-height: 1.6;
+}
+.sps-help code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+/* CSV dialog */
+.sps-dialog {
+  max-height: 86vh;
+}
+.sps-dialog-body {
+  overflow: auto;
+}
+
+/* touch & small screens: 44px targets, compact labels */
+@media (pointer: coarse), (max-width: 760px) {
+  .sps-touch,
+  .sps-toolbar .btn,
+  .sps-toolbar .icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .sps-addr,
+  .sps-bar-input {
+    height: 44px;
+  }
+  .sps-bar-input {
+    font-size: 16px; /* avoids iOS zoom on focus */
+  }
+  .sps-cell {
+    height: 40px;
+  }
+  .sps-editor {
+    font-size: 16px;
+  }
+  .sps-grid thead th {
+    height: 32px;
+  }
+}
+@media (max-width: 760px) {
+  .sps-btn-label {
+    display: none;
+  }
+  .sps-scroll {
+    max-height: 58vh;
+  }
+  .sps-grid thead th {
+    width: 96px;
+    min-width: 96px;
+  }
+  .sps-cell {
+    max-width: 96px;
+  }
+  .sps-bar {
+    padding: 8px 8px 4px;
+  }
+  .sps-toolbar {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+  .sps-sep {
+    display: none;
+  }
+}

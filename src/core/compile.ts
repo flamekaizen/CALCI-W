@@ -223,6 +223,7 @@ export function makeRuntime(angle: AngleUnit = 'rad'): Record<string, NumFn> {
     lerp: (a, b, t) => a + (b - a) * t,
   };
   for (const [name, fn] of Object.entries(distributions)) R[name] = fn as NumFn;
+  for (const [name, fn] of Object.entries(CALC_RUNTIME)) R[name] = fn as NumFn;
   return R;
 }
 
@@ -257,7 +258,44 @@ interface GenState {
   ctx: CompileContext;
   R: Record<string, NumFn>;
   usedFunctions: Set<string>;
+  /** Compiled sub-functions (bodies of integral / sigma / … ) referenced as K[i]. */
+  K: NumFn[];
 }
+
+/** Calculus functions with a bound variable: name → [helper, min args, max args]. */
+const BOUND_FNS: Record<string, [string, number, number]> = {
+  integral: ['__integral', 4, 4],
+  nInt: ['__integral', 4, 4],
+  fnInt: ['__integral', 4, 4],
+  sigma: ['__sigma', 4, 4],
+  summation: ['__sigma', 4, 4],
+  product: ['__product', 4, 4],
+  diff: ['__diff', 3, 4],
+  nDeriv: ['__diff', 3, 4],
+  limit: ['__limit', 3, 3],
+};
+
+/**
+ * Work budget shared by nested calculus helpers. Untrusted evaluation (public
+ * API, embeds) sets a finite budget so sums of sums can't run for hours.
+ */
+let workBudget = Infinity;
+export function setWorkBudget(n: number) {
+  workBudget = n;
+}
+function spend(n: number) {
+  workBudget -= n;
+  if (workBudget < 0) throw new Error('This calculation is too expensive to run here');
+}
+const counted = (f: NumFn): NumFn => (Number.isFinite(workBudget) ? (t: number) => (spend(1), f(t)) : f);
+
+const CALC_RUNTIME: Record<string, (...a: any[]) => number> = {
+  __integral: (f: NumFn, a: number, b: number) => N.integrate(counted(f), a, b, 1e-10, 30).value,
+  __sigma: (f: NumFn, a: number, b: number) => (b - a > 5e6 && Number.isFinite(b) ? NaN : N.series(counted(f), a, b).value),
+  __product: (f: NumFn, a: number, b: number) => N.product(counted(f), a, b),
+  __diff: (f: NumFn, x: number, order = 1) => N.derivative(counted(f), x, order),
+  __limit: (f: NumFn, a: number) => N.limit(counted(f), a).value,
+};
 
 function gen(node: MathNode, st: GenState): string {
   const n = node as any;
@@ -327,6 +365,19 @@ function gen(node: MathNode, st: GenState): string {
     case 'FunctionNode': {
       const name: string = n.fn?.name ?? n.name;
       if (!name || !IDENT.test(name)) throw new CompileError('Unsupported function call');
+      const bound = BOUND_FNS[name];
+      if (bound && !(st.ctx.functions && Object.prototype.hasOwnProperty.call(st.ctx.functions, name))) {
+        const raw = n.args as MathNode[];
+        if (raw.length < bound[1] || raw.length > bound[2]) throw new CompileError(`${name}: wrong number of arguments`);
+        const v = raw[1] as any;
+        if (v.type !== 'SymbolNode') throw new CompileError(`${name}: the second argument must be a variable name`);
+        // body is a function of the outer variables plus the bound variable
+        const body = compileNode(raw[0], { ...st.ctx, vars: [...st.ctx.vars.filter((x) => x !== v.name), v.name] });
+        const outer = st.ctx.vars.filter((x) => x !== v.name).map((x) => `a${st.ctx.vars.indexOf(x)}`);
+        const k = st.K.push(body) - 1;
+        const rest = raw.slice(2).map((a) => gen(a, st)).join(', ');
+        return `R.${bound[0]}((t) => K[${k}](${[...outer, 't'].join(', ')}), ${rest})`;
+      }
       const args = (n.args as MathNode[]).map((a) => gen(a, st)).join(', ');
       if (st.ctx.functions && Object.prototype.hasOwnProperty.call(st.ctx.functions, name)) {
         st.usedFunctions.add(name);
@@ -342,12 +393,12 @@ function gen(node: MathNode, st: GenState): string {
 
 /** Compile a node to a native function of ctx.vars. Throws CompileError. */
 export function compileNode(node: MathNode, ctx: CompileContext): NumFn {
-  const st: GenState = { ctx, R: runtime(ctx.angle ?? 'rad'), usedFunctions: new Set() };
+  const st: GenState = { ctx, R: runtime(ctx.angle ?? 'rad'), usedFunctions: new Set(), K: [] };
   const body = gen(node, st);
   const params = ctx.vars.map((_, i) => `a${i}`).join(', ');
   // eslint-disable-next-line no-new-func
-  const factory = new Function('R', 'C', 'F', `"use strict"; return function(${params}) { return +(${body}); };`);
-  return factory(st.R, ctx.constants ?? {}, ctx.functions ?? {}) as NumFn;
+  const factory = new Function('R', 'C', 'F', 'K', `"use strict"; return function(${params}) { return +(${body}); };`);
+  return factory(st.R, ctx.constants ?? {}, ctx.functions ?? {}, st.K) as NumFn;
 }
 
 /** Collect free symbol names (excluding function names) used by a node. */
