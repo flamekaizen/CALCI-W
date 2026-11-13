@@ -4,6 +4,7 @@
  */
 import { Calculator, programmer, solver, calculus, stats, finance, units, graph, distributions, VERSION, prepare } from '../core/index.js';
 import { validateUntrusted } from '../core/math.js';
+import { setWorkBudget } from '../core/compile.js';
 import type { RegressionModel } from '../core/stats.js';
 import type { TvmInput, TvmKey } from '../core/finance.js';
 import { FN_DOCS } from '../app/fnDocs.js';
@@ -239,18 +240,25 @@ export function handle(action: string, p: Params): ApiResult {
       if (!exprs.length) throw new ApiError(400, 'Provide at least one expr');
       if (exprs.length > 20 || exprs.some((e) => e.length > MAX_EXPR)) throw new ApiError(413, 'Too many or too long expressions');
       const o = (k: string) => (p[k] !== undefined ? num(p, k) : undefined);
-      const svg = graph.renderSvg(exprs, {
-        width: o('width'),
-        height: o('height'),
-        xmin: o('xmin'),
-        xmax: o('xmax'),
-        ymin: o('ymin'),
-        ymax: o('ymax'),
-        theme: p.theme === 'dark' ? 'dark' : 'light',
-        grid: p.grid !== 'false',
-        axes: p.axes !== 'false',
-        angle: angleOf(p),
-      });
+      // nested sums/integrals in plotted curves share a hard work budget
+      setWorkBudget(20_000_000);
+      let svg: string;
+      try {
+        svg = graph.renderSvg(exprs, {
+          width: o('width'),
+          height: o('height'),
+          xmin: o('xmin'),
+          xmax: o('xmax'),
+          ymin: o('ymin'),
+          ymax: o('ymax'),
+          theme: p.theme === 'dark' ? 'dark' : 'light',
+          grid: p.grid !== 'false',
+          axes: p.axes !== 'false',
+          angle: angleOf(p),
+        });
+      } finally {
+        setWorkBudget(Infinity);
+      }
       return { body: svg, contentType: 'image/svg+xml; charset=utf-8', cache: 'public, max-age=86400, s-maxage=604800, immutable' };
     }
     default:

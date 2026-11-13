@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import {
-  Calculator, ChartSpline, Box, Binary, Grid3x3, Equal, SquareFunction, ChartColumn, Landmark, Ruler, CodeXml, Plug,
+  Calculator, ChartSpline, Box, Binary, Grid3x3, Equal, SquareFunction, ChartColumn, Landmark, Ruler, CodeXml, Plug, Table2, Sheet, BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -11,13 +11,19 @@ export interface ModeDef {
   description: string;
   icon: LucideIcon;
   keywords: string;
-  group: 'Calculate' | 'Visualise' | 'Tools' | 'Build';
+  group: 'Calculate' | 'Visualise' | 'Tools' | 'Build' | 'Help';
   /** Full-bleed layout (no page padding / scrolling). */
   fill?: boolean;
   component: LazyExoticComponent<ComponentType>;
 }
 
 export const MODES: ModeDef[] = [
+  {
+    id: 'guide', label: 'Guide & Examples', short: 'Guide', icon: BookOpen, group: 'Help',
+    description: 'Everything Calci can do, what you can plot, and every function',
+    keywords: 'help guide examples tutorial what can plot functions reference how to casio ti desmos',
+    component: lazy(() => import('./modes/Guide')),
+  },
   {
     id: 'scientific', label: 'Scientific', short: 'Calc', icon: Calculator, group: 'Calculate',
     description: 'Natural-display scientific calculator with history, variables and exact answers',
@@ -67,6 +73,18 @@ export const MODES: ModeDef[] = [
     component: lazy(() => import('./modes/Statistics')),
   },
   {
+    id: 'table', label: 'Table & Sequences', short: 'Table', icon: Table2, group: 'Visualise',
+    description: 'Value tables for f(x), g(x), h(x) and explicit or recursive sequences',
+    keywords: 'table values sequence recursive arithmetic geometric series fibonacci u(n) casio table',
+    component: lazy(() => import('./modes/Table')),
+  },
+  {
+    id: 'sheet', label: 'Spreadsheet', short: 'Sheet', icon: Sheet, group: 'Tools',
+    description: 'Cells with formulas, ranges, fill down and CSV import / export',
+    keywords: 'spreadsheet cells formula sum average csv excel grid',
+    component: lazy(() => import('./modes/Spreadsheet')),
+  },
+  {
     id: 'finance', label: 'Finance', short: 'Finance', icon: Landmark, group: 'Tools',
     description: 'Time value of money, loans, amortisation, NPV / IRR and depreciation',
     keywords: 'finance tvm loan mortgage emi interest npv irr amortization depreciation investment',
@@ -92,6 +110,6 @@ export const MODES: ModeDef[] = [
   },
 ];
 
-export const MODE_GROUPS: ModeDef['group'][] = ['Calculate', 'Visualise', 'Tools', 'Build'];
+export const MODE_GROUPS: ModeDef['group'][] = ['Help', 'Calculate', 'Visualise', 'Tools', 'Build'];
 
 export const findMode = (id: string) => MODES.find((m) => m.id === id);

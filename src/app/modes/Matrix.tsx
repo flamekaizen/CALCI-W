@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Minus, Plus, RotateCcw, Shuffle } from 'lucide-react';
 import { getCalculator } from '../engine';
 import { solver, toFraction, toNumber } from '../../core/index';
-import { Tex, Segmented, parseNumber, toast } from '../ui';
+import { Tex, Segmented, parseNumber, toast, Tabs } from '../ui';
+import Vectors from './Vectors';
 import '../../styles/modes/tools.css';
 
 type Name = 'A' | 'B' | 'C' | 'D';
@@ -38,7 +39,7 @@ interface Out {
   note?: string;
 }
 
-export default function MatrixMode() {
+function MatrixPanel() {
   const [mats, setMats] = useState<Record<Name, Cells>>(load);
   const [active, setActive] = useState<Name>('A');
   const [fractions, setFractions] = useState(true);
@@ -196,7 +197,7 @@ export default function MatrixMode() {
     });
 
   return (
-    <div className="page wide">
+    <div>
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <section className="card">
           <div className="card-header">
@@ -368,3 +369,20 @@ function saveTo(o: Out, target: Name, set: (m: Record<Name, Cells>) => void, mat
   toast(`Stored in ${target}`);
 }
 
+
+export default function MatrixMode() {
+  const [tab, setTab] = useState<'matrix' | 'vector'>('matrix');
+  return (
+    <div className="page wide">
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'matrix', label: 'Matrices' },
+          { id: 'vector', label: 'Vectors' },
+        ]}
+      />
+      {tab === 'matrix' ? <MatrixPanel /> : <Vectors />}
+    </div>
+  );
+}

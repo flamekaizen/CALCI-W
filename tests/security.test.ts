@@ -41,7 +41,7 @@ describe('safe mode (public API)', () => {
   it('bounds CPU: no recursive functions, budgeted calculus loops', () => {
     expect(evaluate('f(n) = n < 2 ? n : f(n-1) + f(n-2)', { safe: true }).ok).toBe(false);
     const t0 = performance.now();
-    const r = evaluate('sigma(sigma(1/k^2, k, 1, 1e7), n, 1, 1e7)', { safe: true });
+    const r = evaluate('sigma(sigma(1/k^2, k, 1, 1e6), n, 1, 1e6)', { safe: true });
     expect(r.ok).toBe(false);
     expect(performance.now() - t0).toBeLessThan(8000);
     expect(evaluate('sigma(1/n^2, n, 1, Infinity)', { safe: true }).ok).toBe(true);

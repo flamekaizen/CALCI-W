@@ -79,3 +79,13 @@ Vercel (`vercel.json` included): `npx vercel --prod`. Any static host works for 
 ## Licence
 
 MIT © flamekaizen. Third-party notices: `public/licenses.txt`. All visual design, names and icons are original; no trademarks or assets of other calculator makers are used.
+
+## What's new in 1.1
+
+- **Textbook input** (default): fractions stack numerator over denominator, roots get a radical, powers rise, and ∫ / Σ / d/dx / log_b templates have boxes to fill — like the natural display of the Casio ClassWiz or TI MathPrint. Switch to one-line input from the display bar.
+- **Every answer form at once**: fraction, mixed number, recurring decimal (0.1̅6̅), √ / π forms, D°M′S″, SI prefixes, prime factors, hex / binary, polar form for complex numbers.
+- **Casio-style extras**: CALC-style value boxes for unknown letters, Verify mode (`2 + 2 = 4` → true), ÷R remainder division, DMS, Pol / Rec.
+- **Graphing**: examples gallery ("What can I plot?", 47 examples), function palette, `f'(x)` / `f''(x)`, integrals and sums inside graphs (`y = integral(sin(t)/t, t, 0, x)`), zoom to fit.
+- **New modes**: Guide & Examples (with "coming from Casio / TI / Desmos" maps), Table & Sequences, Spreadsheet.
+- **CAS**: symbolic antiderivatives, factoring over ℚ, simplify / expand, polynomial and rational inequalities.
+- **Solver**: Inequality and Ratio tabs. **Matrix**: Vectors tab (dot, cross, angle, projection, triple product).

@@ -206,5 +206,5 @@ function embed(target: string | Element, opts: EmbedOptions = {}): CalciCalculat
   return el;
 }
 
-(window as any).Calci = { embed, api, version: '1.0.0', origin: SCRIPT_ORIGIN };
+(window as any).Calci = { embed, api, version: '1.1.0', origin: SCRIPT_ORIGIN };
 export { embed, api, CalciCalculator };

@@ -200,6 +200,30 @@ export function createMath(partial: Partial<MathConfig> = {}): CalciMath {
     if (n > 1) out.push(n);
     return math.matrix(out);
   };
+  // Casio-style extras
+  replacements.quorem = (a: any, b: any) => {
+    const x = toNumber(a);
+    const y = toNumber(b);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('quorem (÷R) needs whole numbers');
+    if (y === 0) throw new Error('Division by zero');
+    const q = Math.trunc(x / y);
+    return `${q} R ${x - q * y}`;
+  };
+  /** Degrees, minutes, seconds → decimal degrees: dms(12, 30, 15) = 12.504166… */
+  replacements.dms = numOnly((d, m = 0, s = 0) => Math.sign(d || m || s || 1) * (Math.abs(d) + Math.abs(m) / 60 + Math.abs(s) / 3600));
+  /** Rectangular → polar: Pol(x, y) = [r, θ] in the current angle unit */
+  replacements.Pol = (xa: any, ya: any) => {
+    const x = toNumber(xa);
+    const y = toNumber(ya);
+    return math.matrix([Math.hypot(x, y), Math.atan2(y, x) / factor()]);
+  };
+  /** Polar → rectangular: Rec(r, θ) = [x, y] */
+  replacements.Rec = (ra: any, ta: any) => {
+    const r = toNumber(ra);
+    const t = toNumber(ta);
+    // use the angle-aware trig above so quarter turns are exact (cos 90° = 0)
+    return math.matrix([r * toNumber(replacements.cos(t)), r * toNumber(replacements.sin(t))]);
+  };
   replacements.digitsum = numOnly((x) => String(Math.abs(Math.trunc(x))).split('').reduce((s, d) => s + Number(d), 0));
   replacements.hypot2 = numOnly((a, b) => Math.hypot(a, b));
   replacements.sinc = numOnly((x) => (x === 0 ? 1 : Math.sin(x) / x));

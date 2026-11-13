@@ -993,3 +993,32 @@
     padding-left: 84px;
   }
 }
+
+.welcome {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(460px, calc(100vw - 24px));
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in 220ms var(--ease);
+}
+.welcome-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .welcome {
+    left: 12px;
+    right: 12px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+}

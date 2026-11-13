@@ -9,6 +9,7 @@ import { parse as mparse, type MathNode } from 'mathjs';
 import { normalizeInput, extractBraces, splitTopLevel, matchBracket } from '../normalize.js';
 import { compileNode, CompileError, freeSymbols, isBuiltinConstant, isRuntimeFunction, runtime, type NumFn, type AngleUnit } from '../compile.js';
 import { create, all } from 'mathjs';
+import { derivative } from '../numerics.js';
 
 export type GraphKind =
   | 'empty' | 'explicit' | 'explicitX' | 'polar' | 'parametric' | 'implicit'
@@ -186,7 +187,7 @@ export function compileGraph(lines: GraphLine[], opts: CompileOptions = {}): Com
     }
     let norm: string;
     try {
-      norm = normalizeInput(raw);
+      norm = normalizeInput(raw).replace(/([A-Za-z_]\w*)('{1,3})\s*\(/g, (_m, name: string, p: string) => `${name}__d${p.length}(`);
     } catch (e) {
       items.set(line.id, { id: line.id, kind: 'error', error: String(e) });
       continue;
@@ -196,7 +197,7 @@ export function compileGraph(lines: GraphLine[], opts: CompileOptions = {}): Com
     const rel = splitRelation(br.expr);
     if (rel && rel.op === '=' && !rel.chained) {
       const fm = rel.lhs.match(/^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*\)$/);
-      if (fm && !['x', 'y', 'r'].includes(fm[1])) {
+      if (fm && !['x', 'y', 'r'].includes(fm[1]) && !isRuntimeFunction(fm[1])) {
         try {
           defs.push({ line, kind: 'function', name: fm[1], params: fm[2].split(',').map((p) => p.trim()), body: parseNode(rel.rhs) });
         } catch (e) {
@@ -229,6 +230,11 @@ export function compileGraph(lines: GraphLine[], opts: CompileOptions = {}): Com
   // Pre-declare slider names so function bodies may reference them.
   for (const v of varNames) constants[v] = NaN;
   const resolved = new Set<string>();
+  // prime notation: f'(x), f''(x), f'''(x) → numeric derivatives of one-variable functions
+  for (const d of fnDefs) {
+    if (d.params!.length !== 1) continue;
+    for (let k = 1; k <= 3; k++) functions[`${d.name}__d${k}`] = (x: number) => derivative(functions[d.name] ?? (() => NaN), x, k);
+  }
   for (const d of fnDefs) {
     const known = new Set([...knownBase, ...d.params!]);
     const body = implicitSplit(d.body, known, fnNames);

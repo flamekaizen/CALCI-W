@@ -9,7 +9,9 @@ export { Calculator, evaluate, prepare, friendlyError, DEFAULT_SETTINGS } from '
 export type { CalculatorSettings, EvalResult, Variable, ResultKind } from './engine.js';
 export { createMath, assertSafe, toNumber, UNSAFE_FUNCTIONS } from './math.js';
 export type { CalciMath, MathConfig, AngleUnit } from './math.js';
-export { formatNumber, formatValue, exactForm, toFraction, expressionTex } from './format.js';
+export { formatNumber, formatValue, exactForm, toFraction, expressionTex, alternativeForms, recurringDecimal, toDMS, engineeringSI } from './format.js';
+export type { AltForm } from './format.js';
+export { latexToExpr, LatexError } from './latex.js';
 export type { FormatOptions, Notation, Formatted, ExactForm } from './format.js';
 export { normalizeInput, extractBraces } from './normalize.js';
 export { compileNode, CompileError } from './compile.js';
@@ -33,4 +35,4 @@ export const graph = { ...parse, ...sample, ...analysis, ...ticks, ...palette, r
 export type { GraphLine, CompiledItem, CompiledGraph, GraphKind } from './graph/parse.js';
 export type { Viewport, Polyline } from './graph/sample.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';

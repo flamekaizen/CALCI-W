@@ -5,9 +5,10 @@ import { compileNode, freeSymbols } from '../../core/compile';
 import { useStore } from '../store';
 import { Tabs, Tex, NumberInput, Segmented, fmt, copyText } from '../ui';
 import { Plot } from '../components/Plot';
+import { solveInequality } from '../../core/cas';
 import '../../styles/modes/tools.css';
 
-type Tab = 'poly' | 'linear' | 'equation';
+type Tab = 'poly' | 'linear' | 'equation' | 'inequality' | 'ratio';
 
 export default function Solver() {
   const [tab, setTab] = useState<Tab>('poly');
@@ -20,11 +21,15 @@ export default function Solver() {
           { id: 'poly', label: 'Polynomial' },
           { id: 'linear', label: 'Linear system' },
           { id: 'equation', label: 'Any equation' },
+          { id: 'inequality', label: 'Inequality' },
+          { id: 'ratio', label: 'Ratio' },
         ]}
       />
       {tab === 'poly' && <Polynomial />}
       {tab === 'linear' && <Linear />}
       {tab === 'equation' && <Equation />}
+      {tab === 'inequality' && <Inequality />}
+      {tab === 'ratio' && <Ratio />}
     </div>
   );
 }
@@ -337,5 +342,105 @@ function Equation() {
         </section>
       )}
     </div>
+  );
+}
+
+function Inequality() {
+  const [text, setText] = useState('x^2 - 3x + 2 > 0');
+  const r = useMemo(() => {
+    try {
+      return { res: solveInequality(text), error: null as string | null };
+    } catch (e) {
+      return { res: null, error: (e as Error).message };
+    }
+  }, [text]);
+  const parts = text.split(/<=|>=|≤|≥|<|>/);
+  const f = useMemo(() => {
+    try {
+      const L = compileNode(mparse(normalizeInput(parts[0] ?? '0')), { vars: ['x'] });
+      const R = compileNode(mparse(normalizeInput(parts[parts.length - 1] ?? '0')), { vars: ['x'] });
+      return (x: number) => L(x) - R(x);
+    } catch {
+      return null;
+    }
+  }, [text]);
+  const ends = (r.res?.intervals ?? []).flatMap(([a, b]) => [a, b]).filter(Number.isFinite);
+  const lo = ends.length ? Math.min(...ends) - 3 : -5;
+  const hi = ends.length ? Math.max(...ends) + 3 : 5;
+  return (
+    <div className="grid-2" style={{ alignItems: 'start' }}>
+      <section className="card card-pad stack">
+        <div className="field">
+          <label htmlFor="ineq">Inequality in x</label>
+          <input id="ineq" className="input mono" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. x^2 - 4 <= 0, (x-1)/(x+2) > 0, 1 < x^2 < 4" />
+          <div className="hint">Polynomial and rational inequalities with &lt;, &gt;, ≤ (&lt;=), ≥ (&gt;=), or a chain like 1 &lt; x^2 &lt; 4.</div>
+        </div>
+        {r.error && <div className="error-text">{r.error}</div>}
+        {r.res && (
+          <div className="result-box accent">
+            <div className="result-label">Solution</div>
+            <Tex tex={r.res.tex} display />
+            <div className="small muted" style={{ marginTop: 6 }}>
+              {r.res.all ? 'True for every real x.' : r.res.none ? 'No real x satisfies it.' : r.res.text}
+            </div>
+          </div>
+        )}
+      </section>
+      {f && (
+        <section className="card card-pad">
+          <div className="small muted" style={{ marginBottom: 6 }}>
+            Left side minus right side — the solution is where the curve is above (for &gt;) or below (for &lt;) zero.
+          </div>
+          <Plot
+            x={[lo, hi]}
+            series={[
+              ...(r.res?.intervals ?? []).map(([a, b]) => ({ type: 'area' as const, f: () => 1e9, a: Math.max(a, lo - 10), b: Math.min(b, hi + 10), color: '#059669', opacity: 0.12 })),
+              { type: 'fn', f, color: '#4F46E5', label: 'L − R' },
+              { type: 'hline', y: 0, color: '#94A3B8' },
+            ]}
+            height={300}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Ratio() {
+  // A : B = C : D — leave exactly one box empty
+  const [vals, setVals] = useState<number[]>([3, 4, NaN, 20]);
+  const empty = vals.map((v, i) => (Number.isFinite(v) ? -1 : i)).filter((i) => i >= 0);
+  let answer: number | null = null;
+  let err: string | null = null;
+  if (empty.length !== 1) err = 'Leave exactly one box empty to solve for it.';
+  else {
+    const [A, B, C, D] = vals;
+    const k = empty[0];
+    answer = k === 0 ? (B * C) / D : k === 1 ? (A * D) / C : k === 2 ? (A * D) / B : (B * C) / A;
+    if (!Number.isFinite(answer)) err = 'That ratio has no solution (division by zero).';
+  }
+  const names = ['A', 'B', 'C', 'D'];
+  return (
+    <section className="card card-pad stack" style={{ maxWidth: 640 }}>
+      <p className="small muted">Solve a proportion A : B = C : D. Leave the unknown box empty.</p>
+      <div className="row nowrap ratio-row">
+        {[0, 1].map((i) => (
+          <NumberInput key={i} value={vals[i]} allowEmpty placeholder={names[i]} ariaLabel={names[i]} onChange={(v) => setVals(vals.map((x, j) => (j === i ? v : x)))} />
+        ))}
+        <span className="coef-term">=</span>
+        {[2, 3].map((i) => (
+          <NumberInput key={i} value={vals[i]} allowEmpty placeholder={names[i]} ariaLabel={names[i]} onChange={(v) => setVals(vals.map((x, j) => (j === i ? v : x)))} />
+        ))}
+      </div>
+      <div className="small muted ratio-hint">A : B = C : D</div>
+      {err ? (
+        <div className="error-text">{err}</div>
+      ) : (
+        <div className="result-box accent">
+          <div className="result-label">{names[empty[0]]} =</div>
+          <Tex tex={numTex(answer!)} display />
+        </div>
+      )}
+    </section>
   );
 }
