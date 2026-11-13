@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calci embed demo</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; color: #0e1525; background: #f5f6f8; }
+      h1 { font-size: 22px; } h2 { font-size: 16px; margin-top: 32px; }
+      code, pre { background: #fff; border: 1px solid #e3e6eb; border-radius: 8px; }
+      pre { padding: 12px; overflow-x: auto; font-size: 13px; }
+      button { padding: 8px 12px; border-radius: 8px; border: 1px solid #cfd4dc; background: #fff; cursor: pointer; }
+      #log { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+      @media (prefers-color-scheme: dark) { body { background: #0a0c11; color: #e9edf3; } code, pre, button { background: #12151c; color: #e9edf3; border-color: #232937; } }
+    </style>
+    <script src="/sdk/calci-embed.js" defer></script>
+  </head>
+  <body>
+    <h1>Calci embed demo</h1>
+    <p>This page is an example host site. It loads <code>/sdk/calci-embed.js</code> and uses the <code>&lt;calci-calculator&gt;</code> element.</p>
+
+    <h2>Graphing widget</h2>
+    <calci-calculator id="graph" mode="graph" theme="light" height="440" expressions='["y = sin(x)", "y = a x", "a = 0.5"]'></calci-calculator>
+    <p>
+      <button onclick="graph.setExpressions(['y = x^2 - 3', 'x^2 + y^2 = 9'])">Set expressions</button>
+      <button onclick="graph.setViewport({ xmin: -5, xmax: 5 })">Zoom to −5…5</button>
+      <button onclick="graph.setTheme(document.documentElement.dataset.dark ? 'light' : 'dark'); document.documentElement.dataset.dark = document.documentElement.dataset.dark ? '' : '1'">Toggle theme</button>
+    </p>
+
+    <h2>Scientific widget + evaluate()</h2>
+    <calci-calculator id="sci" mode="scientific" height="560"></calci-calculator>
+    <p><button id="ev">await sci.evaluate('integral(x^2, x, 0, 3)')</button></p>
+
+    <h2>Graph as an image (REST API)</h2>
+    <img alt="Graph of sin and cos" src="/api/v1/plot?expr=y%3Dsin(x)&expr=y%3Dcos(x)&width=640&height=320" style="max-width:100%;border-radius:12px;border:1px solid #e3e6eb" />
+
+    <h2>Event log</h2>
+    <pre id="log"></pre>
+    <script>
+      const log = (m) => (document.getElementById('log').textContent = `${m}\n` + document.getElementById('log').textContent);
+      addEventListener('DOMContentLoaded', () => {
+        const graph = document.getElementById('graph');
+        const sci = document.getElementById('sci');
+        window.graph = graph;
+        window.sci = sci;
+        for (const el of [graph, sci]) {
+          el.addEventListener('calci-ready', () => log(`${el.id}: ready`));
+          el.addEventListener('calci-result', (e) => log(`${el.id}: result ${e.detail.input ?? ''} = ${e.detail.result ?? e.detail.text}`));
+          el.addEventListener('calci-graphChange', (e) => log(`${el.id}: ${e.detail.expressions.length} expressions`));
+        }
+        document.getElementById('ev').onclick = async () => log(`evaluate() → ${(await sci.evaluate('integral(x^2, x, 0, 3)')).text}`);
+      });
+    </script>
+  </body>
+</html>
