@@ -1,0 +1,12 @@
+node_modules
+dist
+.vercel
+*.log
+.env*
+!.env.example
+coverage
+dist-native
+
+.vercel
+.env*
+!.env.native

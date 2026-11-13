@@ -1,0 +1,135 @@
+/*
+ * Calci design tokens.
+ * A calm, neutral canvas keeps attention on the maths; a single accent marks
+ * the primary action (equals, run, solve). Semantic colours are softened so
+ * errors inform rather than alarm. Spacing follows a 4 / 8 pt rhythm.
+ */
+:root {
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --nav-w: 232px;
+  --nav-w-collapsed: 68px;
+  --header-h: 56px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 160ms;
+
+  /* light theme */
+  --bg: #f5f6f8;
+  --bg-elev: #fbfbfc;
+  --surface: #ffffff;
+  --surface-2: #f2f4f7;
+  --surface-3: #e9ecf1;
+  --border: #e3e6eb;
+  --border-strong: #cfd4dc;
+  --text: #0e1525;
+  --text-2: #475164;
+  --text-3: #8a93a3;
+  --text-inverse: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 12px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --overlay: rgba(14, 21, 37, 0.38);
+
+  --success: #047857;
+  --success-soft: #e7f6ef;
+  --danger: #c2410c;
+  --danger-soft: #fdf0e8;
+  --warning: #b45309;
+  --warning-soft: #fdf5e4;
+
+  --key-num: #ffffff;
+  --key-fn: #f2f4f7;
+  --key-shadow: 0 1px 0 rgba(16, 24, 40, 0.08);
+
+  --graph-bg: #ffffff;
+  --graph-minor: #f1f3f6;
+  --graph-major: #dfe3e9;
+  --graph-axis: #3b4250;
+  --graph-text: #5b6372;
+
+  /* accent (indigo by default) */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --accent-soft-2: #e0e3ff;
+  --accent-text: #3f37c9;
+  --accent-contrast: #ffffff;
+
+  color-scheme: light;
+}
+
+:root[data-accent="teal"] { --accent: #0f766e; --accent-hover: #115e59; --accent-soft: #e6f6f4; --accent-soft-2: #cdeee9; --accent-text: #0f6b63; }
+:root[data-accent="rose"] { --accent: #e11d48; --accent-hover: #be123c; --accent-soft: #fff0f3; --accent-soft-2: #ffe0e7; --accent-text: #be123c; }
+:root[data-accent="amber"] { --accent: #c2620a; --accent-hover: #a65308; --accent-soft: #fff5e8; --accent-soft-2: #ffe8c9; --accent-text: #9a4d07; }
+:root[data-accent="emerald"] { --accent: #059669; --accent-hover: #047857; --accent-soft: #e8f8f1; --accent-soft-2: #cdf0e1; --accent-text: #047857; }
+:root[data-accent="sky"] { --accent: #0369a1; --accent-hover: #075985; --accent-soft: #e8f4fb; --accent-soft-2: #cfe8f6; --accent-text: #075985; }
+
+/* dark theme */
+:root[data-theme="dark"] {
+  --bg: #0a0c11;
+  --bg-elev: #0e1117;
+  --surface: #12151c;
+  --surface-2: #181c25;
+  --surface-3: #202532;
+  --border: #232937;
+  --border-strong: #323a4b;
+  --text: #e9edf3;
+  --text-2: #a7b0bf;
+  --text-3: #6c7588;
+  --text-inverse: #0a0c11;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 6px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --danger: #fb923c;
+  --danger-soft: rgba(251, 146, 60, 0.12);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+
+  --key-num: #1a1e28;
+  --key-fn: #141821;
+  --key-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+
+  --graph-bg: #0f1218;
+  --graph-minor: #171b23;
+  --graph-major: #252c38;
+  --graph-axis: #8a93a3;
+  --graph-text: #8f98a8;
+
+  --accent: #8b8cfb;
+  --accent-hover: #a5a6fc;
+  --accent-soft: rgba(139, 140, 251, 0.13);
+  --accent-soft-2: rgba(139, 140, 251, 0.22);
+  --accent-text: #aeb0ff;
+  --accent-contrast: #0b0c1a;
+
+  color-scheme: dark;
+}
+:root[data-theme="dark"][data-accent="teal"] { --accent: #2dd4bf; --accent-hover: #5eead4; --accent-soft: rgba(45, 212, 191, 0.12); --accent-soft-2: rgba(45, 212, 191, 0.2); --accent-text: #5eead4; --accent-contrast: #04201c; }
+:root[data-theme="dark"][data-accent="rose"] { --accent: #fb7185; --accent-hover: #fda4af; --accent-soft: rgba(251, 113, 133, 0.12); --accent-soft-2: rgba(251, 113, 133, 0.2); --accent-text: #fda4af; --accent-contrast: #2a0610; }
+:root[data-theme="dark"][data-accent="amber"] { --accent: #fbbf24; --accent-hover: #fcd34d; --accent-soft: rgba(251, 191, 36, 0.12); --accent-soft-2: rgba(251, 191, 36, 0.2); --accent-text: #fcd34d; --accent-contrast: #261a02; }
+:root[data-theme="dark"][data-accent="emerald"] { --accent: #34d399; --accent-hover: #6ee7b7; --accent-soft: rgba(52, 211, 153, 0.12); --accent-soft-2: rgba(52, 211, 153, 0.2); --accent-text: #6ee7b7; --accent-contrast: #03231a; }
+:root[data-theme="dark"][data-accent="sky"] { --accent: #38bdf8; --accent-hover: #7dd3fc; --accent-soft: rgba(56, 189, 248, 0.12); --accent-soft-2: rgba(56, 189, 248, 0.2); --accent-text: #7dd3fc; --accent-contrast: #021c2a; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur: 0ms; }
+}
