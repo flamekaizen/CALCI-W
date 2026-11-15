@@ -1,4 +1,33 @@
+<!-- calci-header -->
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/flamekaizen/CALCI-W/main/public/icons/icon-256.png" width="88" alt="Calci logo"/>
+
 # Calci — web
+
+**The all-in-one advanced calculator for the browser: scientific, graphing, 3D, CAS, statistics, finance and programmer modes, plus a REST API, JS SDK and embeddable widget.**
+
+<a href="https://calci-web.vercel.app"><img src="https://img.shields.io/badge/live_demo-calci--web.vercel.app-8C8CFF?style=flat-square&logo=vercel&logoColor=white" alt="Live demo"/></a>
+<a href="https://github.com/flamekaizen/CALCI-W/actions/workflows/ci.yml"><img src="https://github.com/flamekaizen/CALCI-W/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+<a href="LICENSE"><img src="https://img.shields.io/github/license/flamekaizen/CALCI-W?style=flat-square&color=8C8CFF" alt="License"/></a>
+<img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
+<img src="https://img.shields.io/badge/React-18-149ECA?style=flat-square&logo=react&logoColor=white" alt="React"/>
+<img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite"/>
+<img src="https://img.shields.io/badge/PWA-offline-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA"/>
+
+<a href="https://calci-web.vercel.app"><b>▶ Open Calci in your browser</b></a>
+
+<sub>Part of the Calci family &nbsp;—&nbsp; <b>🌐 Web</b> &nbsp;·&nbsp; <a href="https://github.com/flamekaizen/CALCI-D">🖥️ Desktop</a> &nbsp;·&nbsp; <a href="https://github.com/flamekaizen/CALCI-M">📱 Mobile</a></sub>
+
+<br/><br/>
+
+<img src="docs/screenshots/web-graph.png" alt="Calci graphing mode" width="100%"/>
+<br/>
+<img src="docs/screenshots/web-scientific.png" alt="Scientific mode with natural textbook input" width="49%"/>
+<img src="docs/screenshots/web-calculus.png" alt="Calculus mode: symbolic derivative, tangent line and plot" width="49%"/>
+
+</div>
+<!-- calci-header -->
 
 All-in-one advanced calculator for the web, with an API, SDK and embeddable widgets.
 Companion apps: **CALCI-M** (Android / iOS) and **CALCI-D** (Windows / macOS / Linux) wrap this build.
